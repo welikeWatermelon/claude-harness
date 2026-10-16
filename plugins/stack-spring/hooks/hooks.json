@@ -1,0 +1,20 @@
+{
+  "description": "stack-spring 검증 훅 (node 실행, Gradle→Maven 순 자동 감지)",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/pre-edit.mjs"], "timeout": 10 } ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/post-edit.mjs"], "timeout": 180, "statusMessage": "Spring: 변경 모듈 컴파일 확인 중..." } ]
+      }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/stop-verify.mjs"], "timeout": 660, "statusMessage": "Spring: 종료 전 빌드 검증 중..." } ] }
+    ]
+  }
+}

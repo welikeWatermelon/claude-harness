@@ -1,0 +1,8 @@
+{
+  "name": "ops",
+  "version": "2.0.0",
+  "description": "운영 안전장치: AI 가 실행하는 원격 명령(ssh/scp/aws/kubectl/docker -H 등) 전부 기록, 원격 파괴 명령 차단, 운영 호스트·허용 목록 밖 호스트는 확인 요청. 배포 전 점검·에러 분석·장애 회고 도구.",
+  "author": { "name": "welikeWatermelon" },
+  "repository": "https://github.com/welikeWatermelon/claude-harness",
+  "keywords": ["ops", "deploy", "ssh", "audit"]
+}

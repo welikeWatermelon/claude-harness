@@ -1,0 +1,14 @@
+{
+  "description": "stack-react 검증 훅 (node 실행, pnpm/yarn/bun/npm 자동 감지)",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/track.mjs"], "timeout": 10 } ]
+      }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/stop-verify.mjs"], "timeout": 360, "statusMessage": "React: 종료 전 타입체크/린트 중..." } ] }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "description": "ops 원격 명령 감사 훅",
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash|PowerShell", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/remote-guard.mjs"], "timeout": 10 } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Bash|PowerShell", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/remote-audit.mjs"], "timeout": 10 } ] }
+    ]
+  }
+}

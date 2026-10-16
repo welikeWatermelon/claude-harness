@@ -1,0 +1,12 @@
+{
+  "name": "yj-harness",
+  "description": "김영준의 Claude Code 하네스 — 공통 가드레일 + 개발 흐름 + 스택별(Spring/React) 검증 + 운영 안전장치",
+  "owner": { "name": "welikeWatermelon" },
+  "plugins": [
+    { "name": "core", "source": "./plugins/core", "description": "공통 가드레일·작업 모드·변경 이력·/core:init (모든 프로젝트 필수)", "category": "guardrail" },
+    { "name": "workflow", "source": "./plugins/workflow", "description": "커밋·PR·인수인계·결정/실패 기록·완료 조건·무인 프롬프트 세트", "category": "workflow" },
+    { "name": "stack-spring", "source": "./plugins/stack-spring", "description": "Spring Boot: 편집 시 컴파일, 턴 종료 시 빌드 검증, Flyway 보호, 리뷰·테스트·성능 에이전트", "category": "stack" },
+    { "name": "stack-react", "source": "./plugins/stack-react", "description": "React: 턴 종료 시 타입체크/린트 검증, 컴포넌트 리뷰 에이전트", "category": "stack" },
+    { "name": "ops", "source": "./plugins/ops", "description": "운영 안전장치: 원격 명령 기록·위험 명령 차단, 배포 점검·에러 분석·장애 회고", "category": "ops" }
+  ]
+}
