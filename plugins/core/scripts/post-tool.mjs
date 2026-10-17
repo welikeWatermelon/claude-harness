@@ -5,7 +5,7 @@
 //   - ExitPlanMode 성공(= 사용자가 계획 수락): 이번 턴 승인 토큰 발급
 import path from 'node:path';
 import { runHook, pass, addContext } from '../lib/hook-io.mjs';
-import { projectRoot, loadConfig, toolFilePath } from '../lib/config.mjs';
+import { projectRoot, loadConfig, toolFilePath, resolveFile } from '../lib/config.mjs';
 import { updateSession, getMode } from '../lib/state.mjs';
 import { parsePlanScope, gateStatus } from '../lib/plan-gate.mjs';
 import { currentBranch } from '../lib/proc.mjs';
@@ -68,7 +68,7 @@ await runHook(
     if (EDIT_TOOLS.has(tool)) {
       const f = toolFilePath(ti);
       if (!f) return pass();
-      const rel = path.relative(root, path.resolve(root, f)).replace(/\\/g, '/');
+      const rel = path.relative(root, resolveFile(root, f)).replace(/\\/g, '/');
       const s = updateSession(root, sid, (s) => {
         if (!s.changedFiles.includes(rel)) s.changedFiles.push(rel);
         if (!s.turnFiles.includes(rel)) s.turnFiles.push(rel);
@@ -81,6 +81,12 @@ await runHook(
     if (tool === 'Bash' || tool === 'PowerShell') {
       const cmd = String(ti.command || '');
       const c = classify(cmd);
+      if (c.mutating) {
+        updateSession(root, sid, (s) => {
+          s.turnActed = true; // 이번 메시지에서 작업을 시작함 → 이후 질문은 미루기 대상
+          return s;
+        });
+      }
       if (c.mutating || c.categories.has('remote') || c.categories.has('db')) {
         logEvent(root, cfg, sid, 'command', { tool, command: cmd.slice(0, 500), cats: [...c.categories].join(',') });
       }

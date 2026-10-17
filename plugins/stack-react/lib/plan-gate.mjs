@@ -46,7 +46,7 @@ export function gateStatus(root, mode) {
 }
 
 const FILE_SECTION = /^#{1,4}\s*(변경\s*파일|변경할\s*파일|수정\s*파일|files?(\s+to\s+change)?|what\s+will\s+change|changed\s+files)(?=\s|$|[:：(])[^\n]*$/im;
-const PATH_TOKEN = /(?:^|[\s`'"(\[:-])((?:[A-Za-z]:[/\\])?(?:\.{0,2}[/\\])?(?:[\w.@-]+[/\\])*[\w.@-]+(?:\.[A-Za-z0-9]{1,8}|[/\\]))(?=$|[\s`'"),\]:])/g;
+const PATH_TOKEN = /(?:^|[\s`'"(\[:-])((?:[A-Za-z]:\/|\.{0,2}\/)?(?:[\w.@-]+\/)*[\w.@-]+(?:\.[A-Za-z0-9]{1,8}|\/))(?=$|[\s`'"),\]:])/g;
 
 /** 계획 본문에서 "## 변경 파일" 섹션의 경로만 추출 */
 export function parsePlanScope(plan, root) {
@@ -56,13 +56,13 @@ export function parsePlanScope(plan, root) {
   const start = m.index + m[0].length;
   const rest = text.slice(start);
   const next = rest.search(/^#{1,4}\s+\S/m);
-  const section = next >= 0 ? rest.slice(0, next) : rest;
+  const section = (next >= 0 ? rest.slice(0, next) : rest).replace(/\\/g, '/'); // Windows 경로 C:\a\b → C:/a/b
   const files = new Set();
   const dirs = new Set();
   for (const mm of section.matchAll(PATH_TOKEN)) {
     let p = mm[1].replace(/\\/g, '/');
     if (/^https?:/.test(p) || /^\d+(\.\d+)*$/.test(p)) continue;
-    if (path.isAbsolute(p)) p = path.relative(root, p).replace(/\\/g, '/');
+    if (path.isAbsolute(p) || /^[A-Za-z]:\//.test(p)) p = path.relative(root, p).replace(/\\/g, '/');
     p = p.replace(/^\.\//, '');
     if (!p || p.startsWith('..')) continue;
     if (p.endsWith('/')) dirs.add(p.replace(/\/+$/, ''));

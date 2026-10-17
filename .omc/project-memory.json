@@ -1,0 +1,114 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1792264774258,
+  "projectRoot": "C:\\Projects\\claude-harness",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": ">=18",
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "npm",
+    "runtime": "Node.js 18"
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "gh pr create --title \"feat: plan-gate v2.1 — 팀원 한정 계획 승인 게이트\" --body \"$(cat <<'EOF'\n## Summary\n- **plan-gate 모듈 추가**: 팀 공용 `harness.json`의 `planGate.requiredFor`에 적힌 팀원만 계획 승인 게이트 적용, 본인은 `/core:mode strict`로 수동 활성화 가능\n- **파일 범위 승인**: 계획의 `## 변경 파일` 섹션에 적힌 파일은 다음 메시지에서도 계속 수정 가능 (v1의 턴 단위 승인 → 파일 단위로 개선)\n- **종료 조건 6가지**: 새 계획 승인 · `/core:plan-done` · 브랜치 변경 · 모드 변경 · 세션 종료 · ttlHours 경과\n\n## Changes\n| 커밋 | 내용 |\n|---|---|\n| `feat: add plan-gate module` | shared + 4개 플러그인 plan-gate.mjs |\n| `feat: add planGate config defaults` | config/state에 planGate 설정, vaguePromptNudge → gated |\n| `feat: integrate plan-gate into core hooks` | pre-tool/post-tool/user-prompt/session-start/cli + plan-done 커맨드 |\n| `chore: bump versions to 2.1.0` | 5개 플러그인 버전 범프 |\n| `test: plan-gate tests` | 통합 7개 + 단위 2개 (총 33개 pass) |\n| `docs: document plan-gate` | DESIGN/HOOK-SPEC C11/ROADMAP/README |\n\n## Test plan\n- [x] `npm test` 전체 통과 (33 pass, 1 skipped)\n- [ ] Windows 환경에서 백슬래시 경로 포함 계획 파일 파싱 확인\n- [ ] 팀원 게이트 적용/미적용 시나리오 수동 검증\n- [ ] `/core:plan-done` 으로 승인 종료 후 재차단 확인\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\nEOF\n)\"",
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {
+      "sync": "node scripts/sync-lib.mjs",
+      "test": "node scripts/sync-lib.mjs --check && node --test tests/rules.test.mjs tests/hooks.test.mjs"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "scripts",
+      "tests"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 4,
+      "lastAccessed": 1792264774111,
+      "keyFiles": [
+        "DESIGN.md",
+        "HOOK-SPEC.md",
+        "MIGRATION-FROM-V1.md",
+        "ROADMAP.md"
+      ]
+    },
+    "plugins": {
+      "path": "plugins",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1792264774122,
+      "keyFiles": []
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 1,
+      "lastAccessed": 1792264774159,
+      "keyFiles": [
+        "sync-lib.mjs"
+      ]
+    },
+    "shared": {
+      "path": "shared",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1792264774163,
+      "keyFiles": []
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 2,
+      "lastAccessed": 1792264774164,
+      "keyFiles": [
+        "hooks.test.mjs",
+        "rules.test.mjs"
+      ]
+    },
+    "shared\\lib": {
+      "path": "shared\\lib",
+      "purpose": "Library code",
+      "fileCount": 10,
+      "lastAccessed": 1792264774168,
+      "keyFiles": [
+        "bash-rules.mjs",
+        "build-detect.mjs",
+        "config.mjs"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "shared\\lib\\plan-gate.mjs",
+      "accessCount": 3,
+      "lastAccessed": 1792265023113,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

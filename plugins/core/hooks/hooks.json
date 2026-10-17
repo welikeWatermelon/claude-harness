@@ -9,7 +9,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Read|Grep",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Read|Grep|AskUserQuestion",
         "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/pre-tool.mjs"], "timeout": 20 } ]
       }
     ],

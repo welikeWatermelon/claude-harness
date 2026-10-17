@@ -13,6 +13,7 @@ import { git, isGitRepo, hasOrigin, currentBranch, defaultBranch, hasCommits } f
 import { getMode, MODES, harnessDir, cleanup } from '../lib/state.mjs';
 import { logEvent } from '../lib/logger.mjs';
 import { gateStatus } from '../lib/plan-gate.mjs';
+import { openItems, DEFER_RULE } from '../lib/pending.mjs';
 
 const HANDOFF_FILES = ['docs/HANDOFF.md', 'HANDOFF.md', 'PROGRESS.md', 'docs/PROGRESS.md'];
 
@@ -71,6 +72,12 @@ await runHook(
     parts.push(
       '규칙: 보호 브랜치 직접 수정·push 금지 / 시크릿 파일 읽기 금지 / 완료 조건(통과할 테스트)을 먼저 합의 / 같은 실수 2회면 docs/failures.md 기록 후 훅 승격 제안.',
     );
+
+    if (cfg.deferQuestions) {
+      parts.push(DEFER_RULE);
+      const pend = openItems(root);
+      if (pend.length) parts.push(`[미해결 결정 ${pend.length}건 — .harness/pending-decisions.md]\n${pend.map((i) => `- ${i.id}: ${i.title}`).join('\n')}\n사용자가 돌아왔으면 /workflow:decide 로 정리하자고 제안하세요.`);
+    }
 
     if (source === 'compact') {
       const snap = readHead(path.join(harnessDir(root), 'compact-snapshot.md'), 60);

@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { runHook, block, addContext, pass } from '../lib/hook-io.mjs';
-import { projectRoot, loadConfig, toolFilePath } from '../lib/config.mjs';
+import { projectRoot, loadConfig, toolFilePath, resolveFile } from '../lib/config.mjs';
 import { detectJvmBuild, jvmArgs } from '../lib/build-detect.mjs';
 import { run, tail } from '../lib/proc.mjs';
 import { updateSession } from '../lib/state.mjs';
@@ -22,7 +22,7 @@ await runHook(
     const cfg = loadConfig(root);
     const f = toolFilePath(input.tool_input || {});
     if (!f) return pass();
-    const abs = path.resolve(root, f);
+    const abs = resolveFile(root, f);
     const sid = input.session_id;
 
     if (/application[^/\\]*\.(ya?ml|properties)$/i.test(abs)) {

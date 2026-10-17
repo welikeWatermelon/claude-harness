@@ -9,6 +9,7 @@ import { projectRoot, loadConfig } from '../lib/config.mjs';
 import { loadSession, harnessDir, getMode } from '../lib/state.mjs';
 import { currentBranch } from '../lib/proc.mjs';
 import { logEvent } from '../lib/logger.mjs';
+import { openItems } from '../lib/pending.mjs';
 
 await runHook(
   async (input) => {
@@ -31,6 +32,9 @@ await runHook(
       '',
       '## 완료 조건',
       done || '- (.harness/done-criteria.md 없음 — /workflow:done 으로 만들 수 있어요)',
+      '',
+      '## 미해결 결정 (.harness/pending-decisions.md)',
+      ...(openItems(root).map((i) => `- ${i.id}: ${i.title}`).concat(openItems(root).length ? [] : ['- (없음)'])),
       '',
       '## 사용자 지시 (compact 시 입력한 내용)',
       input.custom_instructions || '- (없음)',

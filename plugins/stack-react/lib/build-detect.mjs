@@ -3,7 +3,7 @@
 // React : lockfile 로 패키지 매니저 판별 (pnpm → yarn → bun → npm)
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { IS_WIN } from './proc.mjs';
+import { IS_WIN, whichCmd } from './proc.mjs';
 
 const SKIP_DIRS = new Set(['node_modules', 'build', 'dist', 'out', 'target', 'bin', 'gradle', 'src']);
 const GRADLE_FILES = ['build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'];
@@ -43,13 +43,13 @@ export function detectJvmBuild(fileOrDir, projectRoot) {
       const runner = has(wDir, wrapperName) ? path.join(wDir, wrapperName) : path.join(wDir, 'gradlew');
       return { tool: 'gradle', runner, runnerDir: wDir, moduleDir };
     }
-    return { tool: 'gradle', runner: IS_WIN ? 'gradle.bat' : 'gradle', runnerDir: moduleDir, moduleDir };
+    return { tool: 'gradle', runner: whichCmd('gradle'), runnerDir: moduleDir, moduleDir };
   }
   if (isMaven) {
     const wrapperName = IS_WIN ? 'mvnw.cmd' : 'mvnw';
     const wDir = findUp(moduleDir, (d) => has(d, wrapperName), projectRoot);
     if (wDir) return { tool: 'maven', runner: path.join(wDir, wrapperName), runnerDir: wDir, moduleDir };
-    return { tool: 'maven', runner: IS_WIN ? 'mvn.cmd' : 'mvn', runnerDir: moduleDir, moduleDir };
+    return { tool: 'maven', runner: whichCmd('mvn'), runnerDir: moduleDir, moduleDir };
   }
   return null;
 }

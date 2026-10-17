@@ -158,3 +158,22 @@ OMC 는 실행 모드(autopilot/team)와 범용 에이전트 19개를 제공합�
 | 깨진 Java 작성 → 편집 시 컴파일 실패 전달 → Claude 가 수정 → Stop 검증 통과 | `claude -p` + gradle | 의도대로 동작 |
 
 검증하지 못한 것: Windows 실제 실행(리눅스 컨테이너에서만 테스트), Maven 경로, React Stop 검증의 실제 프로젝트 실행, ops 훅의 실제 서버 대상 실행.
+
+---
+
+## 7. v2.2 추가 설계
+
+### 결정 미루기
+사용자는 작업을 맡기고 자리를 비우는 경우가 많아요. 중간에 질문하면 그 질문에 걸리지 않은 작업까지 멈춰요. 그래서 "질문 = 마지막에 한 번"을 기본으로 했어요.
+- 계획 단계 질문은 허용 (가장 좋은 건 계획 때 다 정하는 것)
+- 작업이 시작되면 AskUserQuestion 을 훅이 막고, 결정은 `.harness/pending-decisions.md` 로. 그 결정과 **겹치는 작업만** 보류
+- Stop 훅이 미해결 항목이 있을 때 한 번만 block 해서 질문 차례를 엶 → 같은 메시지에서 반복 차단 없음
+- 실제 Claude 세션에서 확인: a.txt·b.txt 는 만들고, 결정이 필요한 c.txt 만 보류한 뒤 마지막에 질문
+
+### fullstack: 분리 레포 API 계약
+holssi 처럼 백엔드·프론트 레포가 나뉜 경우를 기준으로 설계했어요.
+- 계약의 원본은 백엔드가 커밋하는 `docs/api/openapi.json` (springdoc Gradle 플러그인 생성)
+- 비교는 의존성 없는 자체 diff(`shared/lib/openapi-diff.mjs`) — 프론트를 깨뜨리는 변경만 breaking 으로 분류
+- 깨지면 기본은 프론트 수정. 단 화면에 보이던 값이 사라지는 건 백엔드를 되돌려야 할 수도 있어 사람이 결정 → 결정 미루기와 연결
+- 백엔드 세션에서 프론트 레포를 고칠 수 있게 `/fullstack:setup` 이 `additionalDirectories` 에 등록하고, 프론트 레포 파일에도 그 레포의 보호 브랜치 규칙을 적용(C13)
+- 명세 작성은 api-spec-writer 에이전트(사람이 읽는 API_SPEC.md + springdoc 어노테이션 보강안), 양쪽 대조는 api-contract-reviewer
