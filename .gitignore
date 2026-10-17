@@ -1,3 +1,8 @@
 node_modules/
 .harness/
 .DS_Store
+
+# 개인·도구 상태 (커밋 금지)
+.omc/
+.claude/settings.local.json
+.claude/harness-log/
