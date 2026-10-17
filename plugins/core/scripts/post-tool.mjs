@@ -4,9 +4,11 @@
 //   - 변경성 Bash: 명령 기록
 //   - ExitPlanMode 성공(= 사용자가 계획 수락): 이번 턴 승인 토큰 발급
 import path from 'node:path';
-import { runHook, pass } from '../lib/hook-io.mjs';
+import { runHook, pass, addContext } from '../lib/hook-io.mjs';
 import { projectRoot, loadConfig, toolFilePath } from '../lib/config.mjs';
-import { updateSession } from '../lib/state.mjs';
+import { updateSession, getMode } from '../lib/state.mjs';
+import { parsePlanScope, gateStatus } from '../lib/plan-gate.mjs';
+import { currentBranch } from '../lib/proc.mjs';
 import { logEvent } from '../lib/logger.mjs';
 import { classify } from '../lib/bash-rules.mjs';
 
@@ -36,12 +38,30 @@ await runHook(
     const cfg = loadConfig(root);
 
     if (tool === 'ExitPlanMode') {
+      // ExitPlanMode 가 성공했다 = 사용자가 계획을 수락했다 (거절하면 도구가 실패해서 PostToolUse 가 오지 않음)
       const plan = String(ti.plan || '');
+      const scope = parsePlanScope(plan, root);
+      const useFiles = cfg.planGate.scope !== 'turn' && scope.files.length > 0;
       const s = updateSession(root, sid, (s) => {
-        s.token = { approvedAt: new Date().toISOString(), summary: plan.split('\n').find((l) => l.trim()) || '' };
+        s.token = {
+          approvedAt: new Date().toISOString(),
+          summary: plan.split('\n').find((l) => l.trim()) || '',
+          scope: useFiles ? 'files' : 'turn',
+          files: scope.files,
+          dirs: scope.dirs,
+          branch: currentBranch(root),
+          mode: getMode(root, cfg),
+          turn: s.promptCount || 0,
+        };
         return s;
       });
-      logEvent(root, cfg, sid, 'plan_approved', { summary: s.token.summary.slice(0, 200), plan: plan.slice(0, 4000) });
+      logEvent(root, cfg, sid, 'plan_approved', { summary: s.token.summary.slice(0, 200), scope: s.token.scope, files: s.token.files, plan: plan.slice(0, 4000) });
+      if (gateStatus(root, s.token.mode).active) {
+        const msg = useFiles
+          ? `[하네스] 계획 승인됨 — 다음 파일은 이후 메시지에서도 계속 수정할 수 있어요: ${scope.files.join(', ')}. 범위 밖 파일은 새 계획이 필요해요.`
+          : '[하네스] 계획 승인됨 — 계획에 "## 변경 파일" 목록이 없어서 이번 메시지 안에서만 수정할 수 있어요.';
+        return addContext('PostToolUse', msg);
+      }
       return pass();
     }
 

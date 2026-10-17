@@ -12,7 +12,7 @@ export const DEFAULTS = {
   defaultMode: 'standard', // standard | strict | night | readonly | ops
   autoSyncMain: true,
   syncTimeoutSec: 10,
-  vaguePromptNudge: true,
+  vaguePromptNudge: 'gated', // gated: 계획 게이트 대상(팀원/strict)에게만 | always | off
   log: { enabled: true, retentionDays: 30, redact: true },
   secrets: {
     // Read/Bash 로 읽기 금지할 파일 패턴 (정규식, 경로 끝부분과 매칭)
@@ -41,6 +41,14 @@ export const DEFAULTS = {
   ops: {
     allowedHosts: [], // 비어 있으면 호스트 제한 없음(로그만)
     prodKeywords: ['prod', 'production', 'live'],
+  },
+  // 계획 승인 게이트 — 기본은 아무에게도 걸지 않음. requiredFor 에 있는 팀원만 자동 적용 (팀 공용 harness.json 에서만 읽음)
+  planGate: {
+    requiredFor: [], // git user.email 또는 user.name 목록
+    scope: 'files', // files: 계획에 적힌 파일은 다음 메시지에서도 계속 수정 가능 | turn: 승인한 턴에서만
+    ttlHours: 3,
+    allowNewFilesInPlannedDirs: true,
+    allowTestFiles: true,
   },
   stopLoopLimit: 3,
 };

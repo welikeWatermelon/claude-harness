@@ -46,7 +46,7 @@
 | 모드 | 파일 수정 | 셸에서 막히는 것 |
 |---|---|---|
 | standard | 허용 | C1~C4 만 |
-| strict | 계획 승인 전 deny | 변경성 명령 deny (승인 전) |
+| strict | 계획 게이트(C11)를 본인에게 적용 | C11 참고 |
 | night | 허용 | build · test · remote · git 쓰기 · install · DB |
 | readonly | deny | 변경성 · build · remote · install |
 | ops | 허용 | (ops 플러그인이 원격 명령마다 ask) |
@@ -59,12 +59,25 @@
 | 결과 | context ("모드가 바뀌었다") |
 
 ### C7. 모호한 요청 → Plan 안내
-| 목적 | "기능 만들어줘" 같은 요청에 바로 구현 들어가는 것 방지 (v1 Plan 강제의 가벼운 버전) |
+| 목적 | "기능 만들어줘" 같은 요청에 바로 구현 들어가는 것 방지 — **기본은 계획 게이트 대상(팀원/strict)에게만** (`vaguePromptNudge`: gated / always / off) |
 |---|---|
 | 종류 / 트리거 | UserPromptSubmit |
 | 동작 | 구현 동사(만들어·구현·고쳐·추가해·리팩토링…)가 있고, 파일명·클래스명·코드·목록 같은 구체 신호가 없고, 100자 미만이면 모호 판정 |
 | 결과 | context (300자 이내): Plan 모드로 바뀔 파일·완료 조건·질문 먼저 |
 | 예외 | 질문·설명·분석 요청, 슬래시 커맨드, `vaguePromptNudge:false` |
+
+### C11. 계획 승인 게이트 (팀원 한정)
+| 항목 | 내용 |
+|---|---|
+| 목적 | 팀원(주로 합류한 지 얼마 안 된 동료)의 AI 작업이 승인된 범위 안에서만 코드를 바꾸게. **본인과 동등한 동료에게는 강제하지 않음** |
+| 누구에게 | `.claude/harness.json` 의 `planGate.requiredFor` 에 git `user.email`/`user.name` 이 있는 사람 + `/core:mode strict` 를 켠 사람. requiredFor 는 팀 공용 파일에서만 읽음 (개인 local 설정으로 못 뺌) |
+| 종류 / 트리거 | PreToolUse (Edit·Write 등 / 파일 바꾸는 셸 명령) · PostToolUse(ExitPlanMode) · UserPromptSubmit(`/core:plan-done`) |
+| 승인 | Plan 모드 → ExitPlanMode → 사용자 수락 = 도구 성공 → 토큰 기록 (거절하면 도구가 실패해 토큰 없음) |
+| 범위 | 계획의 `## 변경 파일`(또는 Files to change / What will change) 섹션에 적힌 파일. 그 파일들은 **다음 메시지에서도 계속 수정 가능**. 계획 폴더 안의 새 파일·테스트 파일도 허용 (`allowNewFilesInPlannedDirs`, `allowTestFiles`). 섹션이 없으면 승인한 메시지에서만 |
+| 끝나는 시점 | 새 계획 승인(범위 교체) · 사용자의 `/core:plan-done` · 브랜치 변경 · 모드 변경 · 세션 종료 · `ttlHours`(기본 3시간) 경과 — 먼저 오는 것 |
+| 셸 명령 | rm·mv·sed -i·리다이렉트·설치·DB 는 파일 범위를 확인할 수 없어 **승인한 메시지 안에서만**. git commit/push 는 게이트 대상 아님 (브랜치·시크릿 규칙은 그대로) |
+| 결과 | 승인 없음/만료 → deny + 계획 작성법 / 범위 밖 파일 → deny + 승인된 파일 목록 |
+| 한계 | git 사용자 정보는 본인이 바꿀 수 있어 보안 경계가 아니라 **팀 합의 장치**예요. 실제 강제는 PR 리뷰·브랜치 보호와 함께 |
 
 ### C8. 변경 이력
 | 목적 | 언제·어떤 요청으로·어떤 파일이 바뀌었는지 추적 |

@@ -1,6 +1,6 @@
 {
   "name": "core",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "공통 가드레일: 보호 브랜치·위험 명령·시크릿 차단, 작업 모드(standard/strict/night/readonly/ops), 변경 이력, main 자동 동기화, 컴팩션 스냅샷, /core:init",
   "author": { "name": "welikeWatermelon" },
   "repository": "https://github.com/welikeWatermelon/claude-harness",

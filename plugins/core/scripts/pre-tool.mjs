@@ -1,17 +1,34 @@
 #!/usr/bin/env node
 // core / PreToolUse — 가드레일의 중심
 //   1) 하네스 상태 파일 보호   2) 시크릿 읽기 차단   3) 보호 브랜치 수정 차단
-//   4) 위험 Bash 차단/확인     5) 커밋 시 시크릿 스캔   6) 모드별 제한(strict/night/readonly)
+//   4) 위험 Bash 차단/확인     5) 커밋 시 시크릿 스캔   6) 모드별 제한(night/readonly)
+//   7) 계획 승인 게이트 — strict 모드이거나 팀 설정 planGate.requiredFor 에 있는 팀원일 때만
 import path from 'node:path';
 import { runHook, deny, ask, pass } from '../lib/hook-io.mjs';
 import { projectRoot, loadConfig, toolFilePath, isSecretPath, matchesAny } from '../lib/config.mjs';
 import { currentBranch, hasCommits, isGitRepo, isInside, stagedFiles, stagedDiff } from '../lib/proc.mjs';
 import { classify, pushTargetsProtected, isGitCommit, isBranchCreate } from '../lib/bash-rules.mjs';
 import { getMode, loadSession, MODES } from '../lib/state.mjs';
+import { gateStatus, tokenValid, fileInScope } from '../lib/plan-gate.mjs';
 import { logEvent } from '../lib/logger.mjs';
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
+
+const GATE_WHO = (g) => (g.reason === 'team-member' ? `팀 설정(planGate.requiredFor)에 따라 ${g.who} 님은 계획 승인 후 수정해요` : 'strict 모드예요');
+const PLAN_HOWTO =
+  '1) EnterPlanMode 로 들어가 Read/Grep 으로 분석\n' +
+  '2) 계획에 반드시 "## 변경 파일" 섹션을 두고 바꿀 파일 경로를 한 줄에 하나씩 적기 (+ 변경 내용·실행할 명령·위험·롤백)\n' +
+  '3) ExitPlanMode → 사용자가 수락하면 그 파일들은 다음 메시지에서도 계속 수정 가능\n' +
+  '   (끝나는 시점: 새 계획 승인 · 사용자의 /core:plan-done · 브랜치/모드 변경 · 세션 종료 · 시간 만료)';
+
+function gateCheck(root, cfg, sessionId, mode) {
+  const g = gateStatus(root, mode);
+  if (!g.active) return { g, active: false };
+  const s = loadSession(root, sessionId);
+  const v = tokenValid(s.token, { branch: currentBranch(root), mode, ttlHours: cfg.planGate.ttlHours, promptCount: s.promptCount || 0 });
+  return { g, active: true, s, v };
+}
 
 const BRANCH_MSG = (b) =>
   `보호 브랜치 '${b}' 에서는 코드를 바꿀 수 없어요.\n` +
@@ -97,16 +114,22 @@ await runHook(
           deny(BRANCH_MSG(b));
         }
       }
-      if (mode === 'strict' && inRepo && !rel.startsWith('.harness/')) {
-        const s = loadSession(root, sessionId);
-        if (!s.token) {
-          log('deny', 'strict-no-plan', rel);
-          deny(
-            'strict 모드예요 — 승인된 계획 없이 파일을 바꿀 수 없어요.\n' +
-              '1) EnterPlanMode 로 들어가 Read/Grep 으로 분석\n' +
-              '2) 계획에 "파일별 정확한 변경 / 실행할 명령 그대로 / 위험 / 롤백" 을 적어 ExitPlanMode\n' +
-              '3) 사용자가 수락하면 이번 턴 동안 수정이 허용돼요.',
-          );
+      if (inRepo && !rel.startsWith('.harness/')) {
+        const gc = gateCheck(root, cfg, sessionId, mode);
+        if (gc.active) {
+          if (!gc.v.ok) {
+            log('deny', 'plan-gate', rel, { why: gc.v.why, who: gc.g.who, gate: gc.g.reason });
+            deny(`${GATE_WHO(gc.g)} — ${gc.v.why}.\n${PLAN_HOWTO}`);
+          }
+          const inScope = fileInScope(gc.s.token, rel, abs, cfg.planGate);
+          if (!inScope.ok) {
+            log('deny', 'plan-scope', rel, { who: gc.g.who, planned: gc.s.token.files });
+            deny(
+              `'${rel}' 은(는) 승인된 계획의 변경 파일 목록에 없어요.\n` +
+                `승인된 파일: ${gc.s.token.files.join(', ') || '(없음)'}\n` +
+                '이 파일이 필요하면 이 파일을 포함한 새 계획을 세워 ExitPlanMode 로 다시 승인받으세요 (새 승인은 이전 범위를 대체해요).',
+            );
+          }
         }
       }
       if (f && isSecretPath(f, cfg)) {
@@ -170,11 +193,20 @@ await runHook(
         }
       }
 
-      if (mode === 'strict' && c.mutating && !isBranchCreate(cmd)) {
-        const s = loadSession(root, sessionId);
-        if (!s.token) {
-          log('deny', 'strict-no-plan-bash', cmd.slice(0, 200), { cats });
-          deny(`strict 모드예요 — 승인된 계획 없이 변경성 명령(${cats})을 실행할 수 없어요. 계획에 이 명령을 그대로 적고 ExitPlanMode 로 승인받으세요.`);
+      // 계획 게이트: 파일을 바꾸는 셸 명령(rm·mv·sed -i·리다이렉트·설치·DB)은 파일 단위로 범위를 확인할 수 없어서
+      // "승인받은 그 메시지" 안에서만 허용. git commit/push 는 코드 내용을 바꾸지 않아 게이트 대상 아님 (브랜치·시크릿 규칙은 그대로)
+      const gatedCats = ['fsWrite', 'install', 'db', 'dynamic'].filter((k) => c.categories.has(k));
+      if (gatedCats.length && !isBranchCreate(cmd)) {
+        const gc = gateCheck(root, cfg, sessionId, mode);
+        if (gc.active) {
+          const sameTurn = gc.v.ok && gc.s.token.turn === (gc.s.promptCount || 0);
+          if (!sameTurn) {
+            log('deny', 'plan-gate-bash', cmd.slice(0, 200), { cats, who: gc.g.who, why: gc.v.why });
+            deny(
+              `${GATE_WHO(gc.g)} — 파일을 바꾸는 명령(${gatedCats.join(',')})은 계획을 승인받은 그 메시지 안에서만 실행할 수 있어요.${gc.v.ok ? '' : ` (${gc.v.why})`}\n` +
+                '가능하면 Edit/Write 도구로 바꾸세요 (승인된 파일은 계속 수정 가능). 셸 명령이 꼭 필요하면 계획에 그대로 적고 다시 승인받으세요.',
+            );
+          }
         }
       }
 
