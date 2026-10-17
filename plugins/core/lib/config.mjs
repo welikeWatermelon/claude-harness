@@ -51,6 +51,7 @@ export const DEFAULTS = {
   frontend: {
     verifyOnStop: 'check', // off | check
     verifyTimeoutSec: 300,
+    androidTask: 'compileDebugSources', // Android 검증 Gradle 태스크
   },
   // 코드 규칙 강도 덮어쓰기: { "S6": "off", "R4": "block", "B7": "warn" }
   rules: {},

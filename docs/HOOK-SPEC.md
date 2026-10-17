@@ -190,3 +190,85 @@ fullstack 처럼 한 세션에서 다른 레포(예: 프론트) 파일을 고칠
 
 ### F2. 계약 갱신 알림 (프론트 레포)
 SessionStart 에서 백엔드 스냅샷이 프론트 생성 타입(`src/api/generated/schema.ts`)보다 새로우면 `/fullstack:api-sync` 를 제안해요.
+
+---
+
+## 코드 규칙 (v2.3)
+
+모든 규칙은 같은 엔진(`shared/lib/code-rules.mjs`)을 써요.
+
+| 단계 | 하는 일 |
+|---|---|
+| PreToolUse (Edit·Write·MultiEdit) | 수정 **결과**를 미리 계산(Edit 치환·MultiEdit 순차 적용) → 수정 전·후를 둘 다 검사해 **새로 생긴 위반만** 남김 (같은 줄 내용·같은 메시지 기준) |
+| block 위반 | `permissionDecision: deny` + 규칙 ID·파일:라인·고치는 법 |
+| warn 위반 | 수정은 통과시키고 세션 상태(`pendingWarnings`)에 보관 → 같은 수정의 PostToolUse 가 `additionalContext` 로 Claude 에게 전달 (한 번만) |
+| 기록 | 모든 위반을 `.harness/logs/*.jsonl` 에 `rule` 이벤트로 (규칙 오탐 튜닝용) |
+| 강도 | `.claude/harness.json` `"rules": { "<ID>": "off" \| "warn" \| "block" }` — 잘못된 값은 무시하고 기본값 |
+
+정규식·가벼운 파서(`java-parse.mjs`: 문자열·주석을 가리고 메서드·어노테이션·본문 범위 추출)로 판단하는 **휴리스틱**이라 오탐이 있을 수 있어요. 그래서 오탐이 적은 것만 기본 차단이에요.
+
+### stack-spring (S)
+| ID | 강도 | 조건 | 근거 |
+|---|---|---|---|
+| S1 | warn | 같은 클래스 메서드가 @Transactional·@Async·@Cacheable·@Retryable 메서드를 직접 호출 | KEEPING OutboxPublisher 중복 발행 |
+| S2 | warn | 트랜잭션 메서드에서 `mark*`/`changeStatus`/`setStatus` 후 `throw new` (REQUIRES_NEW 제외) | KEEPING 2회 재발 |
+| S3 | warn | `@Entity` + `@Id` 인데 `@GeneratedValue`·`@EmbeddedId`·`Persistable` 없음 | KEEPING 중복 알림 |
+| S4 | warn | `redis/`·`cache/` 경로 모델의 `is*/get*` 계산 메서드에 필드·@JsonIgnore 없음 | KEEPING QrToken 500 |
+| S5 | block | Boot 3 (빌드 파일 버전·jakarta 사용) 에서 `import javax.persistence/validation/servlet…` | |
+| S6~S14 | warn | 필드 @Autowired · 컨트롤러 엔티티 반환(프로젝트 @Entity 색인) · 컨트롤러/private @Transactional · EAGER · 다른 도메인 Repository(`spring.crossDomainRepositoryAllow` 예외) · 리스너 publishEvent · 쓰기 트랜잭션 안 `*Client/*Gateway/restTemplate/webClient` · 민감정보 로그 · 고유값 메트릭 태그 | MelonMe 컨벤션 |
+| S15 | block | `application-prod*` 의 ddl-auto create/update, init SQL 경로의 test/dummy/seed 파일 | KEEPING 배포 규칙 |
+| S16 | warn | jpa 설정이 있는데 `open-in-view: false` 없음 | |
+| S17 | block | 빌드 파일에 lombok 없는데 `import lombok.` | |
+| S18 | warn | Stop: Service·Controller 등은 바뀌고 `src/test/` 는 그대로 → 메시지당 한 번 block | 완료 조건 |
+| S19~S22 | 권고 | spring-reviewer: 기본값 인용, 트랜잭션 누락, @Version, 테스트 DB 일관성 | KEEPING |
+
+### stack-react (R) — R3·R4·R6·R7·R8 은 웹 공통 규칙(W)과 같은 검사
+| ID | 강도 | 동작 |
+|---|---|---|
+| R1 | warn | PostToolUse: eslint 가 의존성·설정에 있으면 수정한 파일만 `eslint --fix --format unix` → 남은 오류 20줄까지 block 으로 반환 (`react.eslintFixOnEdit`) |
+| R2 | ask | 기존 eslint·tsconfig·prettier·biome 설정 수정 |
+| R3 | block | `@ts-ignore`·`@ts-nocheck`, 이유 없는 `@ts-expect-error`·`eslint-disable` (`-- 이유` / `: 이유` 있으면 허용) |
+| R4 | warn | `: any`, `as any`, `<any>`, `any[]` (테스트 제외) |
+| R5 | warn | Stop: 이번 세션에 바뀐 파일의 `console.log/debug` → 메시지당 한 번 block |
+| R6 | warn | localhost·사설 IP·`/api/` 절대 URL 문자열 (설정·테스트 제외) |
+| R7 | block | `VITE_`·`NEXT_PUBLIC_`·`REACT_APP_`·`NUXT_PUBLIC_` 이름에 SECRET·PRIVATE·PASSWORD·DB·SERVICE_ROLE (.env 포함) |
+| R8 | warn | components·pages·views·app 의 화면 파일에서 `fetch(`·`axios.*(` |
+| R9 | block | Next 프로젝트의 `'use client'` 파일이 fs·path·server-only·next/headers·prisma import, 또는 NEXT_PUBLIC_ 아닌 process.env |
+| R10 | 권고 | react-reviewer: floating promise, exhaustive-deps 무시 |
+| R11 | block | Stop: 타입체크 통과 후 바뀐 파일과 짝인 `*.test/spec.*` 만 vitest run / jest --findRelatedTests (`react.testOnStop`, night 모드 생략) |
+
+### stack-backend (B)
+| ID | 강도 | 동작 |
+|---|---|---|
+| B1 | warn | SQL 키워드가 든 문자열의 `+` 연결, 템플릿 `${}`, f-string, `%` 포맷, `.format(`, Go `Sprintf("%s")` |
+| B2 | block | Prisma·Alembic·Django·Knex/TypeORM·golang-migrate·Rails 마이그레이션 중 **git 에 커밋된** 파일 수정 |
+| B3 | block | AWS·GitHub·Stripe·Slack·Google·OpenAI 키 형식, 개인키 블록, `password/secret/api_key/token = "8자 이상 리터럴"` (환경변수·플레이스홀더·URL 제외) |
+| B4~B9 | warn | 민감정보 로그 · 위험 API · Python bare except/가변 기본 인자 · Go 에러 무시 · cors()/에러 상세 응답 · 디버그 플래그 |
+| B10 | warn | Stop: 소스는 바뀌고 테스트는 그대로 → 메시지당 한 번 block |
+| B11 | warn | Kotlin `!!`, `runBlocking` |
+| 검증 | — | PostToolUse: Python `py_compile` 즉시. Stop: Node(typecheck→tsc→lint) · Python(compileall + ruff) · Go(build + vet) · JVM(classes testClasses). `backend.verifyOnStop: test` 면 테스트까지. 도구가 없으면 실패가 아니라 "생략" 알림 |
+
+### stack-frontend (V·A·I·W·X)
+| ID | 강도 | 동작 |
+|---|---|---|
+| V1~V3 | warn | `.vue` template 의 v-html, :key 없는 v-for, `props.x =` |
+| W3·W7 / W4·W6·W8 | block / warn | 웹 공통 (React 의 R3·R7 / R4·R6·R8 과 같음) |
+| A1~A5 | warn | Kotlin `!!`, GlobalScope, runBlocking, Log 에 토큰, 로컬·/api URL 하드코딩 |
+| I1~I3 | warn | Swift 강제 언래핑·`try!`·`as!`(문자열·주석 제외), print 에 토큰, `DispatchQueue.main.sync` |
+| X1 | ask | local.properties·google-services.json·keystore·GoogleService-Info.plist·.xcconfig 수정 |
+| X3 | block | 앱 코드의 하드코딩 키 (B3 와 같은 검사) |
+| 검증 | — | Stop: Vue(typecheck → vue-tsc → lint) · Nuxt(nuxi typecheck) · Android(`:<module>:compileDebugSources`) · iOS(macOS + Package.swift 면 swift build, 아니면 "Mac 빌드 필요" 안내) |
+
+### fullstack (F)
+| ID | 강도 | 동작 |
+|---|---|---|
+| F1 | block | `frontend.typesOut` 파일·같은 generated 폴더, 또는 첫 10줄 주석에 DO NOT EDIT·@generated·auto-generated·Generated by 가 있는 파일 수정 |
+| F2 | block | (backend) 계약 스냅샷 `docs/api/openapi.json` 을 Edit/Write 로 수정 |
+| F3 | warn | (backend) `*ErrorCode*` enum 상수 삭제·이름 변경 → 프론트 레포에서 사용처(웹·Swift·Kotlin) 검색해 함께 표시 |
+| F4 | warn | (backend) ApiResponse·ErrorResponse·GlobalExceptionHandler 등 공통 응답 파일의 실질 변경 |
+| F5 | warn | (backend) 그 외 enum 값 삭제·이름 변경 → DB 마이그레이션·API_CHANGES 기록 요구 |
+| F6 | 비교 | 성공 응답 코드(2xx) 삭제·변경, `/v1/x` → `/v2/x` 경로 버전 변경을 breaking 으로 |
+| F7 | 비교 | format 변경(date→date-time 등) breaking, int32→int64 는 호환 + JS 정밀도 메모 |
+| F8 | 비교 | `oasdiff` 가 PATH 에 있으면 breaking 판정은 `oasdiff breaking --format json` (level 3=ERR), 호환 변경은 내장 비교. `fullstack.openapi.useOasdiff: false` 로 끔 |
+| F9 | 커맨드 | `/fullstack:ci` → `.github/workflows/api-contract.yml` (PR 에서 base 스냅샷과 `tufin/oasdiff` Docker 로 `--fail-on ERR`) |
+| F10 | 설정 | `fullstack.frontend.language: ts | swift | kotlin` — swift 는 명세 복사 + swift-openapi-generator 설정, kotlin 은 명세 복사, 사용처 검색에 .swift·.kt 포함 (View·Screen·Fragment 는 [화면]) |

@@ -240,7 +240,7 @@ test('core: cli init — settings.json 병합·gitignore·기록 파일', () => 
   const dir = makeRepo({ branch: 'chore/init' });
   mkdirSync(path.join(dir, '.claude'));
   writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(echo:*)'] } }));
-  writeFileSync(path.join(dir, 'build.gradle'), "plugins { id 'java' }\n");
+  writeFileSync(path.join(dir, 'build.gradle'), "plugins { id 'java'; id 'org.springframework.boot' version '3.3.0' }\n");
   const r = spawnSync('node', [P('core', 'cli.mjs'), 'init', '--apply'], { cwd: dir, encoding: 'utf8' });
   const out = JSON.parse(r.stdout);
   assert.deepEqual(out.stacks, ['spring']);
@@ -374,4 +374,124 @@ test('경로 별칭(Windows 8.3 짧은 이름·심볼릭 링크)으로 들어와
   symlinkSync(dir, alias, 'dir');
   assert.equal(decision(hook('core', 'pre-tool.mjs', { cwd: alias, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'a.txt'), content: 'x' } })), 'deny');
   assert.equal(decision(hook('core', 'pre-tool.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(alias, 'a.txt'), content: 'x' } })), 'deny');
+});
+
+// ---------- v2.3 코드 규칙 훅 ----------
+const ctxOf = (r) => r.json?.hookSpecificOutput?.additionalContext || r.json?.reason || '';
+const reasonOf = (r) => r.json?.hookSpecificOutput?.permissionDecisionReason || r.json?.reason || '';
+
+test('stack-spring 규칙: block(S5) 은 수정 거부, warn(S9) 은 PostToolUse 에서 Claude 에게 전달', () => {
+  const dir = makeRepo({ branch: 'feature/rules' });
+  writeFileSync(path.join(dir, 'build.gradle'), "plugins { id 'org.springframework.boot' version '3.3.0' }\n");
+  const f = path.join(dir, 'src/main/java/com/x/app/domain/user/Member.java');
+  mkdirSync(path.dirname(f), { recursive: true });
+  const deny = hook('stack-spring', 'pre-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: f, content: 'import javax.persistence.Entity;\nclass Member {}\n' } });
+  assert.equal(decision(deny), 'deny');
+  assert.match(reasonOf(deny), /\[S5\].*jakarta/);
+
+  const plain = makeRepo({ branch: 'feature/rules2' }); // 빌드 파일 없음 → 컴파일 생략, 규칙만
+  const g = path.join(plain, 'src/main/java/com/x/app/domain/user/Profile.java');
+  mkdirSync(path.dirname(g), { recursive: true });
+  const content = 'class Profile {\n  @OneToMany(fetch = FetchType.EAGER)\n  List<A> a;\n}\n';
+  assert.equal(decision(hook('stack-spring', 'pre-edit.mjs', { cwd: plain, tool_name: 'Write', tool_input: { file_path: g, content } })), 'pass');
+  writeFileSync(g, content);
+  const post = hook('stack-spring', 'post-edit.mjs', { cwd: plain, tool_name: 'Write', tool_input: { file_path: g, content } });
+  assert.match(ctxOf(post), /\[S9\]/);
+  assert.doesNotMatch(ctxOf(hook('stack-spring', 'post-edit.mjs', { cwd: plain, tool_name: 'Write', tool_input: { file_path: g, content } })), /\[S9\]/, '경고는 한 번만');
+});
+
+test('stack-react 규칙: R3 거부, R2 설정 수정 확인, R4 경고 전달, Stop 에서 R5 console.log 알림(한 번)', () => {
+  const dir = makeRepo({ branch: 'feature/web' });
+  writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ dependencies: { react: '18' } }));
+  writeFileSync(path.join(dir, 'tsconfig.json'), '{ "compilerOptions": { "strict": true } }\n');
+  mkdirSync(path.join(dir, 'src/pages'), { recursive: true });
+  const f = path.join(dir, 'src/pages/A.tsx');
+  assert.equal(decision(hook('stack-react', 'pre-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: f, content: '// @ts-ignore\nconst a = 1;\n' } })), 'deny');
+  assert.equal(decision(hook('stack-react', 'pre-edit.mjs', { cwd: dir, tool_name: 'Edit', tool_input: { file_path: path.join(dir, 'tsconfig.json'), old_string: 'true', new_string: 'false' } })), 'ask');
+
+  const content = 'export const f = (x: any) => { console.log(x); return x; };\n';
+  assert.equal(decision(hook('stack-react', 'pre-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: f, content } })), 'pass');
+  writeFileSync(f, content);
+  hook('core', 'post-tool.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: f, content } });
+  assert.match(ctxOf(hook('stack-react', 'track.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: f, content } })), /\[R4\]/);
+  const stop = hook('stack-react', 'stop-verify.mjs', { cwd: dir });
+  assert.equal(stop.json?.decision, 'block', stop.out + stop.err);
+  assert.match(stop.json.reason, /\[R5\].*src\/pages\/A\.tsx:1/s);
+  hook('stack-react', 'track.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: f, content } });
+  assert.notEqual(hook('stack-react', 'stop-verify.mjs', { cwd: dir }).json?.decision, 'block', '같은 메시지에선 다시 막지 않음');
+});
+
+test('stack-backend: 커밋된 마이그레이션 수정 거부(B2)·작성 중 파일 허용, 비밀값 거부(B3), Python 문법 오류 즉시 반환, B10 테스트 알림', () => {
+  const dir = makeRepo({ branch: 'feature/be' });
+  writeFileSync(path.join(dir, 'requirements.txt'), 'fastapi\n');
+  const mig = path.join(dir, 'alembic/versions/001_init.py');
+  mkdirSync(path.dirname(mig), { recursive: true });
+  writeFileSync(mig, 'def upgrade():\n    pass\n');
+  const draft = path.join(dir, 'alembic/versions/002_add.py');
+  writeFileSync(draft, 'def upgrade():\n    pass\n');
+  sh('git', ['add', 'alembic/versions/001_init.py'], dir);
+  sh('git', ['commit', '-qm', 'mig'], dir);
+  const edit = (file) => hook('stack-backend', 'pre-edit.mjs', { cwd: dir, tool_name: 'Edit', tool_input: { file_path: file, old_string: 'pass', new_string: 'op.drop()' } });
+  assert.equal(decision(edit(mig)), 'deny');
+  assert.equal(decision(edit(draft)), 'pass', '아직 커밋 안 된 마이그레이션은 허용');
+  const app = path.join(dir, 'app/main.py');
+  mkdirSync(path.dirname(app), { recursive: true });
+  const secret = hook('stack-backend', 'pre-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: app, content: 'API_KEY = "AKIAABCDEFGHIJKLMNOP"\n' } });
+  assert.equal(decision(secret), 'deny');
+  assert.match(reasonOf(secret), /\[B3\]/);
+
+  writeFileSync(app, 'def f(:\n  pass\n');
+  const bad = hook('stack-backend', 'post-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: app } });
+  assert.equal(bad.json?.decision, 'block', bad.out + bad.err);
+  assert.match(bad.json.reason, /SyntaxError/);
+
+  writeFileSync(app, 'def f():\n    return 1\n');
+  hook('core', 'post-tool.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: app } });
+  hook('stack-backend', 'post-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: app } });
+  const stop = hook('stack-backend', 'stop-verify.mjs', { cwd: dir });
+  assert.equal(stop.json?.decision, 'block', stop.out + stop.err);
+  assert.match(stop.json.reason, /\[B10\].*main\.py/s);
+});
+
+test('stack-frontend: 앱 설정 파일 수정 확인(X1), 하드코딩 키 거부(X3), Swift 강제 언래핑 경고(I1)', () => {
+  const dir = makeRepo({ branch: 'feature/app' });
+  writeFileSync(path.join(dir, 'Package.swift'), '// swift-tools-version:5.9\n');
+  assert.equal(decision(hook('stack-frontend', 'pre-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'GoogleService-Info.plist'), content: '<plist/>' } })), 'ask');
+  const kt = path.join(dir, 'app/src/main/java/com/x/Keys.kt');
+  assert.equal(decision(hook('stack-frontend', 'pre-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: kt, content: 'val k = "AIzaSyA1234567890abcdefghijklmnopqrstuv"\n' } })), 'deny');
+  const sw = path.join(dir, 'Sources/App/HomeView.swift');
+  mkdirSync(path.dirname(sw), { recursive: true });
+  const content = 'let name = user!.name\n';
+  assert.equal(decision(hook('stack-frontend', 'pre-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: sw, content } })), 'pass');
+  writeFileSync(sw, content);
+  assert.match(ctxOf(hook('stack-frontend', 'post-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: sw } })), /\[I1\]/);
+  if (process.platform !== 'darwin') {
+    const stop = hook('stack-frontend', 'stop-verify.mjs', { cwd: dir });
+    assert.match(stop.json?.systemMessage || '', /Mac/, 'Windows·Linux 에서는 Swift 빌드 불가 안내');
+  }
+});
+
+test('fullstack 규칙: 생성 파일 수정 거부(F1), 계약 스냅샷 수정 거부(F2), ErrorCode 삭제 시 프론트 사용처 경고(F3)', () => {
+  const front = makeRepo({ branch: 'feature/ui' });
+  mkdirSync(path.join(front, 'src/api'), { recursive: true });
+  writeFileSync(path.join(front, 'src/api/errors.ts'), "if (code === 'POST_NOT_FOUND') show();\n");
+  const gen = path.join(front, 'src/lib/client.ts');
+  mkdirSync(path.dirname(gen), { recursive: true });
+  writeFileSync(gen, '// This file was auto-generated by openapi-typescript.\n// Do not make direct changes to the file.\nexport type A = {};\n');
+  assert.equal(decision(hook('fullstack', 'pre-edit.mjs', { cwd: front, tool_name: 'Edit', tool_input: { file_path: gen, old_string: 'A', new_string: 'B' } })), 'deny');
+
+  const back = makeRepo({ branch: 'feature/api' });
+  mkdirSync(path.join(back, '.claude'), { recursive: true });
+  writeFileSync(path.join(back, '.claude', 'harness.json'), JSON.stringify({ fullstack: { role: 'backend', peerPath: front } }));
+  mkdirSync(path.join(back, 'docs/api'), { recursive: true });
+  writeFileSync(path.join(back, 'docs/api/openapi.json'), '{}');
+  assert.equal(decision(hook('fullstack', 'pre-edit.mjs', { cwd: back, tool_name: 'Write', tool_input: { file_path: path.join(back, 'docs/api/openapi.json'), content: '{"x":1}' } })), 'deny');
+
+  const ec = path.join(back, 'src/main/java/b/global/ErrorCode.java');
+  mkdirSync(path.dirname(ec), { recursive: true });
+  writeFileSync(ec, 'public enum ErrorCode {\n  POST_NOT_FOUND(404),\n  USER_NOT_FOUND(404);\n}\n');
+  const pre = hook('fullstack', 'pre-edit.mjs', { cwd: back, tool_name: 'Edit', tool_input: { file_path: ec, old_string: '  POST_NOT_FOUND(404),\n', new_string: '' } });
+  assert.equal(decision(pre), 'pass');
+  const post = hook('fullstack', 'track.mjs', { cwd: back, tool_name: 'Edit', tool_input: { file_path: ec } });
+  assert.match(ctxOf(post), /\[F3\].*POST_NOT_FOUND[\s\S]*src\/api\/errors\.ts:1/);
 });

@@ -5,7 +5,7 @@
   "description": "Claude Code plugin marketplace (yj-harness)",
   "scripts": {
     "sync": "node scripts/sync-lib.mjs",
-    "test": "node scripts/sync-lib.mjs --check && node --test tests/rules.test.mjs tests/hooks.test.mjs"
+    "test": "node scripts/sync-lib.mjs --check && node --test tests/rules.test.mjs tests/code-rules.test.mjs tests/hooks.test.mjs"
   },
   "engines": { "node": ">=18" }
 }

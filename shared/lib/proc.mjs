@@ -7,7 +7,7 @@ export const IS_WIN = process.platform === 'win32';
 
 /**
  * 명령 실행. Windows 의 .bat/.cmd(gradlew.bat, mvnw.cmd, npm.cmd)는 shell 로 실행해야 해서 자동 처리합니다.
- * @returns {{ok:boolean, code:number|null, out:string, timedOut:boolean}}
+ * @returns {{ok:boolean, code:number|null, out:string, timedOut:boolean, notFound:boolean}}
  */
 export function run(cmd, args = [], { cwd, timeoutSec = 10, env } = {}) {
   const opts = {
@@ -28,9 +28,12 @@ export function run(cmd, args = [], { cwd, timeoutSec = 10, env } = {}) {
   } else {
     r = spawnSync(cmd, args, opts);
   }
-  const out = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
+  let out = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
   const timedOut = r.error && r.error.code === 'ETIMEDOUT';
-  return { ok: r.status === 0 && !r.error, code: r.status, out: timedOut ? `timed out after ${timeoutSec}s\n${out}` : out, timedOut };
+  // 명령이 설치돼 있지 않음 (Windows .cmd 경유는 'is not recognized' 로 나옴)
+  const notFound = (r.error && r.error.code === 'ENOENT') || (IS_WIN && r.status === 9009) || /is not recognized as an internal or external command/.test(out);
+  if (notFound && !out) out = `ENOENT: ${cmd} 를 찾을 수 없어요`;
+  return { ok: r.status === 0 && !r.error, code: r.status, out: timedOut ? `timed out after ${timeoutSec}s\n${out}` : out, timedOut, notFound };
 }
 
 /**
