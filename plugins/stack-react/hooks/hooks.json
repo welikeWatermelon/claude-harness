@@ -1,14 +1,20 @@
 {
   "description": "stack-react 검증 훅 (node 실행, pnpm/yarn/bun/npm 자동 감지)",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/pre-edit.mjs"], "timeout": 10 } ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",
-        "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/track.mjs"], "timeout": 10 } ]
+        "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/track.mjs"], "timeout": 90, "statusMessage": "React: eslint --fix 중..." } ]
       }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/stop-verify.mjs"], "timeout": 360, "statusMessage": "React: 종료 전 타입체크/린트 중..." } ] }
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/stop-verify.mjs"], "timeout": 600, "statusMessage": "React: 종료 전 타입체크·관련 테스트 중..." } ] }
     ]
   }
 }

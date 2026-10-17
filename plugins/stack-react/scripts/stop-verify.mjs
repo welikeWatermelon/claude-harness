@@ -9,6 +9,33 @@ import { detectNodeProject } from '../lib/build-detect.mjs';
 import { run, tail } from '../lib/proc.mjs';
 import { loadSession, updateSession, getMode } from '../lib/state.mjs';
 import { logEvent } from '../lib/logger.mjs';
+import { severityOf, readText } from '../lib/code-rules.mjs';
+import { consoleLeftovers, relatedTests } from '../lib/rules-web.mjs';
+import { existsSync } from 'node:fs';
+
+/** R11: 이번 세션에서 바뀐 소스와 짝인 테스트 파일 (테스트 파일 자체를 바꿨으면 그것도) */
+function testsFor(root, p, changed) {
+  const out = new Set();
+  for (const rel of changed) {
+    const abs = path.join(root, rel);
+    if (!abs.startsWith(p.pkgDir)) continue;
+    const inPkg = path.relative(p.pkgDir, abs).replace(/\\/g, '/');
+    if (/\.(test|spec)\.[jt]sx?$/.test(inPkg)) {
+      if (existsSync(abs)) out.add(inPkg);
+      continue;
+    }
+    if (!/\.(tsx?|jsx?|vue)$/.test(inPkg)) continue;
+    for (const t of relatedTests(inPkg)) if (existsSync(path.join(p.pkgDir, t))) out.add(t);
+  }
+  return [...out].slice(0, 30);
+}
+
+function testCommand(p, files) {
+  const pre = p.pm === 'npm' ? ['exec', '--'] : p.pm === 'yarn' ? [] : ['exec'];
+  if (p.deps && p.deps.vitest) return [...pre, 'vitest', 'run', ...files];
+  if (p.deps && p.deps.jest) return [...pre, 'jest', '--findRelatedTests', '--passWithNoTests', ...files];
+  return null;
+}
 
 function plan(p, goal) {
   const exec = p.pm === 'npm' ? ['exec', '--', 'tsc', '--noEmit'] : p.pm === 'yarn' ? ['tsc', '--noEmit'] : ['exec', 'tsc', '--noEmit'];
@@ -47,6 +74,17 @@ await runHook(
       logEvent(root, cfg, sid, 'verify', { target: label, goal, ok: r.ok, tool: p.pm, on: 'stop' });
       if (r.ok) passed.push(label);
       else failures.push(`■ ${label} (${p.pm} ${args.join(' ')})\n${tail(r.out, 30)}`);
+      // R11: 바뀐 파일과 짝인 테스트만 실행 (night 모드·readonly 는 생략)
+      if (r.ok && cfg.react.testOnStop && severityOf({ id: 'R11', severity: 'block' }, cfg) !== 'off' && getMode(root, cfg) !== 'night') {
+        const files = testsFor(root, p, s.changedFiles || []);
+        const cmd = files.length ? testCommand(p, files) : null;
+        if (cmd) {
+          const t = run(p.pmCmd, cmd, { cwd: p.pkgDir, timeoutSec: cfg.react.testTimeoutSec, env: { CI: 'true' } });
+          logEvent(root, cfg, sid, 'verify', { target: label, goal: 'test', ok: t.ok, tool: cmd[cmd.indexOf('vitest') >= 0 ? cmd.indexOf('vitest') : cmd.indexOf('jest')], on: 'stop' });
+          if (t.ok) passed.push(`${label} 테스트 ${files.length}개`);
+          else if (severityOf({ id: 'R11', severity: 'block' }, cfg) === 'block') failures.push(`■ ${label} 관련 테스트 (${cmd.join(' ')})\n${tail(t.out, 40)}`);
+        }
+      }
     }
     if (!failures.length) {
       updateSession(root, sid, (x) => {
@@ -54,6 +92,20 @@ await runHook(
         x.reactStopBlocks = 0;
         return x;
       });
+      // R5: 바뀐 파일에 남은 console.log — 프롬프트당 한 번만 알림
+      const sev5 = severityOf({ id: 'R5', severity: 'warn' }, cfg);
+      const s2 = loadSession(root, sid);
+      if (sev5 !== 'off' && s2.reactConsoleTurn !== (s2.promptCount || 0)) {
+        const left = consoleLeftovers(s2.changedFiles || [], (f) => readText(path.join(root, f)));
+        if (left.length) {
+          updateSession(root, sid, (x) => {
+            x.reactConsoleTurn = x.promptCount || 0;
+            return x;
+          });
+          logEvent(root, cfg, sid, 'rule', { id: 'R5', severity: sev5, count: left.length });
+          return block(`[R5] 이번에 바꾼 파일에 console.log 가 남아 있어요. 디버깅용이면 지우고, 꼭 필요한 로그면 이유를 한 줄로 말한 뒤 끝내세요:\n${left.slice(0, 15).map((x) => '  ' + x).join('\n')}`);
+        }
+      }
       return passed.length ? systemMessage(`✓ React 검증 통과 (${goal}): ${passed.join(', ')}`) : pass();
     }
     const count = (s.reactStopBlocks || 0) + 1;

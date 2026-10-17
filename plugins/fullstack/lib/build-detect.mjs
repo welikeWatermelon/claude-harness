@@ -55,10 +55,11 @@ export function detectJvmBuild(fileOrDir, projectRoot) {
 }
 
 /** compile / test 실행 인자 */
-export function jvmArgs(b, goal) {
+export function jvmArgs(b, goal, _file) {
   const rel = path.relative(b.runnerDir, b.moduleDir);
   if (b.tool === 'gradle') {
-    const tasks = goal === 'test' ? ['test'] : goal === 'compileAll' ? ['compileJava', 'compileTestJava'] : ['compileJava'];
+    // classes/testClasses 는 Java·Kotlin 컴파일을 모두 포함 (compileJava 만 돌리면 .kt 변경을 못 잡음)
+    const tasks = goal === 'test' ? ['test'] : goal === 'compileAll' ? ['classes', 'testClasses'] : ['classes'];
     const proj = rel ? ['-p', b.moduleDir] : [];
     return ['-q', '--console=plain', ...proj, ...tasks];
   }
@@ -84,6 +85,7 @@ export function detectNodeProject(fileOrDir, projectRoot) {
     scripts: pkg.scripts || {},
     hasTs: !!deps.typescript && has(pkgDir, 'tsconfig.json'),
     isReact: !!deps.react,
+    deps,
   };
 }
 

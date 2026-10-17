@@ -1,0 +1,35 @@
+# API 계약 검사 — 하네스(fullstack 플러그인)가 만든 워크플로
+# PR 에서 커밋된 OpenAPI 스냅샷(__SNAPSHOT__)을 base 브랜치 것과 비교해서 프론트를 깨뜨리는 변경(ERR)이 있으면 실패해요.
+# 의도된 깨짐이면 PR 설명에 프론트 대응을 적고, 리뷰어가 확인한 뒤 머지하세요.
+name: api-contract
+
+on:
+  pull_request:
+    paths:
+      - '__SNAPSHOT__'
+
+jobs:
+  oasdiff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: base 스냅샷 꺼내기
+        id: base
+        run: |
+          if git show "origin/${{ github.base_ref }}:__SNAPSHOT__" > /tmp/base.json 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "base 브랜치에 스냅샷이 없어요 (처음 추가) — 비교 생략"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: 깨지는 변경 검사 (oasdiff)
+        if: steps.base.outputs.exists == 'true'
+        run: |
+          cp "__SNAPSHOT__" /tmp/revision.json
+          docker run --rm -v /tmp:/specs tufin/oasdiff:latest breaking /specs/base.json /specs/revision.json --fail-on ERR --format githubactions
+      - name: 전체 변경 요약
+        if: always() && steps.base.outputs.exists == 'true'
+        run: |
+          docker run --rm -v /tmp:/specs tufin/oasdiff:latest changelog /specs/base.json /specs/revision.json --format markdown >> "$GITHUB_STEP_SUMMARY" || true

@@ -7,7 +7,8 @@
 //   3) Stop 검증 대상 모듈을 기록
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { runHook, block, addContext, pass } from '../lib/hook-io.mjs';
+import { runHook, block, addContext as _addContext, pass as _pass } from '../lib/hook-io.mjs';
+import { takeWarnings } from '../lib/rules-hook.mjs';
 import { projectRoot, loadConfig, toolFilePath, resolveFile } from '../lib/config.mjs';
 import { detectJvmBuild, jvmArgs } from '../lib/build-detect.mjs';
 import { run, tail } from '../lib/proc.mjs';
@@ -18,6 +19,10 @@ const HARDCODED = /^\s*([\w.-]*(password|secret|api[-_]?key|access[-_]?key|priva
 
 await runHook(
   async (input) => {
+    // PreToolUse 에서 보관한 규칙 경고(S1~S17)를 이 훅의 결과에 함께 실어 보냄
+    const extra = takeWarnings(input, 'spring');
+    const pass = () => (extra ? _addContext('PostToolUse', extra) : _pass());
+    const addContext = (ev, text) => _addContext(ev, extra ? `${text}\n\n${extra}` : text);
     const root = projectRoot(input);
     const cfg = loadConfig(root);
     const f = toolFilePath(input.tool_input || {});
@@ -53,12 +58,12 @@ await runHook(
     });
 
     if (!cfg.spring.compileOnEdit) return pass();
-    const r = run(b.runner, jvmArgs(b, 'compile'), { cwd: b.runnerDir, timeoutSec: cfg.spring.compileTimeoutSec });
+    const r = run(b.runner, jvmArgs(b, 'compile', abs), { cwd: b.runnerDir, timeoutSec: cfg.spring.compileTimeoutSec });
     logEvent(root, cfg, sid, 'verify', { target: path.relative(root, b.moduleDir) || '.', goal: 'compile', ok: r.ok, tool: b.tool });
     if (r.ok) return pass();
     if (r.timedOut) return addContext('PostToolUse', `[stack-spring] 컴파일 확인이 ${cfg.spring.compileTimeoutSec}초 안에 끝나지 않았어요. 턴 종료 시 다시 검증합니다.`);
     return block(
-      `[stack-spring] ${path.relative(root, b.moduleDir) || '루트'} 모듈 컴파일 실패 (${path.basename(b.runner)} ${jvmArgs(b, 'compile').join(' ')}). 아래 오류를 먼저 고치세요:\n${tail(r.out, 25)}`,
+      `[stack-spring] ${path.relative(root, b.moduleDir) || '루트'} 모듈 컴파일 실패 (${path.basename(b.runner)} ${jvmArgs(b, 'compile', abs).join(' ')}). 아래 오류를 먼저 고치세요:\n${tail(r.out, 25)}${extra ? `\n\n${extra}` : ''}`,
     );
   },
   { failClosed: false, name: 'stack-spring/post-edit' },

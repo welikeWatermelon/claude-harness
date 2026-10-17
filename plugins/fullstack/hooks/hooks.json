@@ -4,6 +4,9 @@
     "SessionStart": [
       { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/session-start.mjs"], "timeout": 15 } ] }
     ],
+    "PreToolUse": [
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/pre-edit.mjs"], "timeout": 15 } ] }
+    ],
     "PostToolUse": [
       { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/track.mjs"], "timeout": 10 } ] }
     ],
