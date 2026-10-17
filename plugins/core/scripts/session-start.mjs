@@ -12,6 +12,7 @@ import { projectRoot, loadConfig } from '../lib/config.mjs';
 import { git, isGitRepo, hasOrigin, currentBranch, defaultBranch, hasCommits } from '../lib/proc.mjs';
 import { getMode, MODES, harnessDir, cleanup } from '../lib/state.mjs';
 import { logEvent } from '../lib/logger.mjs';
+import { gateStatus } from '../lib/plan-gate.mjs';
 
 const HANDOFF_FILES = ['docs/HANDOFF.md', 'HANDOFF.md', 'PROGRESS.md', 'docs/PROGRESS.md'];
 
@@ -61,8 +62,14 @@ await runHook(
     if (branch && cfg.protectedBranches.includes(branch)) {
       parts.push(`⚠ 지금은 보호 브랜치(${branch})예요. 코드를 바꾸기 전에 \`git switch -c feature/<작업>\` 으로 브랜치를 먼저 만드세요.`);
     }
+    const gate = gateStatus(root, mode);
+    if (gate.active) {
+      parts.push(
+        `[계획 게이트 적용: ${gate.reason === 'team-member' ? `팀 설정에 따라 ${gate.who} 님` : 'strict 모드'}] 파일 수정 전 Plan 모드로 계획을 세우고 승인받아야 해요. 계획에 "## 변경 파일" 목록을 적으면 그 파일들은 승인 후 다음 메시지에서도 계속 수정할 수 있어요.`,
+      );
+    }
     parts.push(
-      '규칙: 보호 브랜치 직접 수정·push 금지 / 시크릿 파일 읽기 금지 / 모호한 구현 요청은 Plan 먼저 / 완료 조건(통과할 테스트)을 먼저 합의 / 같은 실수 2회면 docs/failures.md 기록 후 훅 승격 제안.',
+      '규칙: 보호 브랜치 직접 수정·push 금지 / 시크릿 파일 읽기 금지 / 완료 조건(통과할 테스트)을 먼저 합의 / 같은 실수 2회면 docs/failures.md 기록 후 훅 승격 제안.',
     );
 
     if (source === 'compact') {

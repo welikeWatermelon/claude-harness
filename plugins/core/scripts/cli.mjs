@@ -12,6 +12,7 @@ import { projectRoot, loadConfig, DEFAULTS } from '../lib/config.mjs';
 import { getMode, MODES, harnessDir } from '../lib/state.mjs';
 import { currentBranch, isGitRepo, run } from '../lib/proc.mjs';
 import { detectStacks } from '../lib/build-detect.mjs';
+import { gateStatus, teamRequiredFor } from '../lib/plan-gate.mjs';
 
 const MARKETPLACE = 'yj-harness';
 const DEFAULT_REPO = 'welikeWatermelon/claude-harness';
@@ -40,6 +41,11 @@ function status() {
   console.log(`모드: ${mode} — ${MODES[mode]}`);
   console.log(`브랜치: ${b || '(git 아님/커밋 없음)'}${b && cfg.protectedBranches.includes(b) ? '  ⚠ 보호 브랜치' : ''}`);
   console.log(`보호 브랜치: ${cfg.protectedBranches.join(', ')}`);
+  const g = gateStatus(root, mode);
+  const req = teamRequiredFor(root);
+  console.log(`계획 게이트: ${g.active ? `적용 (${g.reason === 'team-member' ? '팀 설정 대상' : 'strict 모드'})` : '미적용'} — 현재 git 사용자: ${g.who}`);
+  console.log(`  게이트 대상 팀원(planGate.requiredFor): ${req.length ? req.join(', ') : '(없음)'} / 승인 유지: ${cfg.planGate.scope === 'files' ? `계획 파일 한정, ${cfg.planGate.ttlHours}시간` : '승인한 메시지에서만'}`);
+
   console.log(`Spring 검증: 편집 시 컴파일=${cfg.spring.compileOnEdit}, 턴 종료 시=${cfg.spring.verifyOnStop}`);
   console.log(`React 검증: 턴 종료 시=${cfg.react.verifyOnStop}`);
   console.log(`설정 파일: .claude/harness.json ${existsSync(path.join(root, '.claude/harness.json')) ? '있음' : '없음(기본값 사용)'}`);
@@ -61,7 +67,7 @@ function log(n = 20) {
       if (!l.trim()) continue;
       try {
         const e = JSON.parse(l);
-        if (['guard', 'file_change', 'command', 'plan_approved', 'mode_change', 'verify'].includes(e.type)) lines.push(e);
+        if (['guard', 'file_change', 'command', 'plan_approved', 'plan_done', 'mode_change', 'verify'].includes(e.type)) lines.push(e);
       } catch {}
     }
   }
@@ -70,7 +76,8 @@ function log(n = 20) {
     if (e.type === 'guard') console.log(`${t} [${e.decision}] ${e.rule} — ${e.tool} ${e.command || e.reason || ''}`.slice(0, 220));
     else if (e.type === 'file_change') console.log(`${t} [변경] ${e.file} (+${e.added}/-${e.removed}) ← "${e.prompt || ''}"`.slice(0, 220));
     else if (e.type === 'command') console.log(`${t} [명령] ${e.command}`.slice(0, 220));
-    else if (e.type === 'plan_approved') console.log(`${t} [계획 승인] ${e.summary}`);
+    else if (e.type === 'plan_approved') console.log(`${t} [계획 승인] ${e.summary}${e.files && e.files.length ? ` (범위: ${e.files.join(', ')})` : ' (이번 메시지 한정)'}`);
+    else if (e.type === 'plan_done') console.log(`${t} [계획 종료] ${(e.files || []).join(', ')}`);
     else if (e.type === 'mode_change') console.log(`${t} [모드] ${e.from} → ${e.to}`);
     else if (e.type === 'verify') console.log(`${t} [검증 ${e.ok ? '통과' : '실패'}] ${e.target || ''} ${e.goal || ''}`);
   }
@@ -111,6 +118,11 @@ function init() {
       $comment: '하네스 설정. 기본값은 플러그인 lib/config.mjs 의 DEFAULTS. 개인 설정은 .claude/harness.local.json',
       protectedBranches: DEFAULTS.protectedBranches,
       defaultMode: 'standard',
+      planGate: {
+        $comment: '여기 적은 팀원(git user.email 또는 user.name)만 파일 수정 전 계획 승인이 필요해요. 비워두면 아무에게도 강제하지 않아요.',
+        requiredFor: [],
+        ttlHours: 3,
+      },
       spring: { compileOnEdit: true, verifyOnStop: 'compile' },
       react: { verifyOnStop: 'typecheck' },
     };
