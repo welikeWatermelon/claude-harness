@@ -47,7 +47,8 @@ GitHub 레포 하나가 Claude Code **플러그인 마켓플레이스(`yj-harnes
 | 명령 | 하는 일 |
 |---|---|
 | `/core:mode night` | 자기 전에. 파일 편집만 허용, 빌드·테스트·서버·git 쓰기 차단 |
-| `/core:mode strict` | 결제·정합성 코드. 계획 승인 전 수정 전부 차단 |
+| `/core:mode strict` | 본인에게 계획 게이트 켜기 (승인 전 수정 차단, 승인 후엔 계획 파일만) |
+| `/core:plan-done` | 승인받은 계획 끝내기 |
 | `/core:mode readonly` | 분석만 |
 | `/core:mode standard` | 기본으로 복귀 |
 | `/core:status` · `/core:log` | 현재 상태 · 언제 어떤 요청으로 무엇이 바뀌었나 |
@@ -66,11 +67,14 @@ GitHub 레포 하나가 Claude Code **플러그인 마켓플레이스(`yj-harnes
 {
   "protectedBranches": ["main", "master", "develop"],
   "defaultMode": "standard",
+  "planGate": { "requiredFor": ["newbie@team.com"], "ttlHours": 3 },
   "spring": { "compileOnEdit": true, "verifyOnStop": "compile" },
   "react": { "verifyOnStop": "typecheck" },
   "ops": { "allowedHosts": ["10.0.1.12"], "prodKeywords": ["prod"] }
 }
 ```
+- `planGate.requiredFor`: 여기 적은 팀원(git user.email 또는 user.name)만 **파일 수정 전 계획 승인**이 필요해요. 비워두면 아무에게도 강제하지 않아요. 승인 후엔 계획의 `## 변경 파일` 목록을 3시간 동안(또는 `/core:plan-done`·새 계획·브랜치 변경까지) 계속 수정할 수 있어요.
+
 전체 기본값: `shared/lib/config.mjs` 의 `DEFAULTS`.
 
 ---
