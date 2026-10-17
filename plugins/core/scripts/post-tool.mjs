@@ -81,6 +81,12 @@ await runHook(
     if (tool === 'Bash' || tool === 'PowerShell') {
       const cmd = String(ti.command || '');
       const c = classify(cmd);
+      if (c.mutating) {
+        updateSession(root, sid, (s) => {
+          s.turnActed = true; // 이번 메시지에서 작업을 시작함 → 이후 질문은 미루기 대상
+          return s;
+        });
+      }
       if (c.mutating || c.categories.has('remote') || c.categories.has('db')) {
         logEvent(root, cfg, sid, 'command', { tool, command: cmd.slice(0, 500), cats: [...c.categories].join(',') });
       }

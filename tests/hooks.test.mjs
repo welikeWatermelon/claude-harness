@@ -300,3 +300,66 @@ test('ops: 원격 파괴 명령 차단, 일반 원격 명령은 감사 로그만
   assert.match(audit, /docker logs app/);
   assert.match(audit, /remote-destructive/);
 });
+
+// ---------- 결정 미루기 ----------
+test('결정 미루기: 계획 단계 질문은 허용, 작업 시작 후 질문은 차단 → 끝날 때 한 번 질문 차례', () => {
+  const dir = makeRepo({ branch: 'feature/defer' });
+  const askQ = () => decision(hook('core', 'pre-tool.mjs', { cwd: dir, tool_name: 'AskUserQuestion', tool_input: { questions: [] } }));
+  prompt(dir, '알림 기능 구현해줘');
+  assert.equal(askQ(), 'pass', '아직 아무것도 안 바꿨으면 계획 단계 질문 허용');
+  hook('core', 'post-tool.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'A.java'), content: 'x' } });
+  assert.equal(askQ(), 'deny', '작업 시작 후 질문은 미루기');
+  mkdirSync(path.join(dir, '.harness'), { recursive: true });
+  assert.equal(write(dir, '.harness/pending-decisions.md'), 'pass', '대기 목록 파일은 Claude 가 쓸 수 있음');
+  writeFileSync(path.join(dir, '.harness', 'pending-decisions.md'), '- [ ] D1: 탈퇴 사용자 글 표시 방식?\n  - 선택지: A / B\n- [x] D0: 끝난 것 → 답: A\n');
+  const s1 = hook('core', 'stop.mjs', { cwd: dir });
+  assert.equal(s1.json?.decision, 'block');
+  assert.match(s1.json.reason, /D1/);
+  assert.doesNotMatch(s1.json.reason, /D0/);
+  assert.equal(askQ(), 'pass', '질문 차례가 열린 뒤엔 허용');
+  assert.equal(hook('core', 'stop.mjs', { cwd: dir }).json, null, '같은 메시지에선 다시 막지 않음');
+  const ctx = hook('core', 'session-start.mjs', { cwd: dir, source: 'resume' }).json.hookSpecificOutput.additionalContext;
+  assert.match(ctx, /미해결 결정 1건/);
+});
+
+test('다른 레포 파일 수정 시 그 레포의 보호 브랜치 규칙 적용', () => {
+  const back = makeRepo({ branch: 'feature/b' });
+  const front = makeRepo();
+  const f = path.join(front, 'src', 'api.ts');
+  assert.equal(decision(hook('core', 'pre-tool.mjs', { cwd: back, tool_name: 'Write', tool_input: { file_path: f, content: 'x' } })), 'deny');
+  sh('git', ['switch', '-qc', 'feature/f'], front);
+  assert.equal(decision(hook('core', 'pre-tool.mjs', { cwd: back, tool_name: 'Write', tool_input: { file_path: f, content: 'x' } })), 'pass');
+});
+
+// ---------- fullstack ----------
+test('fullstack: DTO 수정 → 명세 생성·비교 → 깨지는 변경이면 프론트 사용처와 함께 block', { skip: !hasGradle && 'gradle 없음', timeout: 300000 }, () => {
+  const back = makeRepo({ branch: 'feature/api' });
+  const front = makeRepo({ branch: 'feature/ui' });
+  mkdirSync(path.join(front, 'src', 'pages'), { recursive: true });
+  mkdirSync(path.join(front, 'src', 'api'), { recursive: true });
+  writeFileSync(path.join(front, 'src', 'pages', 'Post.tsx'), 'export const P = ({p}) => <h1>{p.authorName}</h1>;\n');
+  writeFileSync(path.join(front, 'src', 'api', 'post.ts'), "export const get = (id) => fetch(`/api/posts/${id}`);\n");
+  writeFileSync(path.join(back, 'settings.gradle'), "rootProject.name='b'\n");
+  writeFileSync(path.join(back, 'build.gradle'), "tasks.register('generateOpenApiDocs') { doLast { copy { from 'spec.json'; into 'build'; rename { 'openapi.json' } } } }\n");
+  mkdirSync(path.join(back, '.claude'), { recursive: true });
+  writeFileSync(path.join(back, '.claude', 'harness.json'), JSON.stringify({ fullstack: { role: 'backend', peerPath: front } }));
+  const spec = (props) => JSON.stringify({ paths: { '/api/posts/{id}': { get: { responses: { 200: { content: { 'application/json': { schema: { $ref: '#/components/schemas/PostResponse' } } } } } } } }, components: { schemas: { PostResponse: { properties: props } } } });
+  const dto = path.join(back, 'src/main/java/b/dto/PostResponse.java');
+  mkdirSync(path.dirname(dto), { recursive: true });
+  writeFileSync(dto, 'record PostResponse(Long id, String authorName) {}');
+
+  writeFileSync(path.join(back, 'spec.json'), spec({ id: { type: 'integer' }, authorName: { type: 'string' } }));
+  hook('fullstack', 'track.mjs', { cwd: back, tool_name: 'Write', tool_input: { file_path: dto } });
+  const first = hook('fullstack', 'stop-contract.mjs', { cwd: back });
+  assert.match(first.json?.systemMessage || '', /스냅샷을 처음/, first.out + first.err);
+  assert.ok(existsSync(path.join(back, 'docs/api/openapi.json')));
+
+  writeFileSync(path.join(back, 'spec.json'), spec({ id: { type: 'integer' } }));
+  assert.equal(hook('fullstack', 'stop-contract.mjs', { cwd: back }).json, null, 'API 파일을 안 고쳤으면 검사 안 함');
+  hook('fullstack', 'track.mjs', { cwd: back, tool_name: 'Edit', tool_input: { file_path: dto } });
+  const r = hook('fullstack', 'stop-contract.mjs', { cwd: back });
+  assert.equal(r.json?.decision, 'block', r.out + r.err);
+  assert.match(r.json.reason, /PostResponse\.authorName/);
+  assert.match(r.json.reason, /\[화면\] src\/pages\/Post\.tsx:1/);
+  assert.match(readFileSync(path.join(back, 'docs/api/API_CHANGES.md'), 'utf8'), /깨짐.*authorName/);
+});

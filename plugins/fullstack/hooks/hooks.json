@@ -1,0 +1,14 @@
+{
+  "description": "fullstack API 계약 훅 — role(backend/frontend)은 .claude/harness.json 의 fullstack.role",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/session-start.mjs"], "timeout": 15 } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/track.mjs"], "timeout": 10 } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/stop-contract.mjs"], "timeout": 420, "statusMessage": "fullstack: API 명세 생성·계약 비교 중..." } ] }
+    ]
+  }
+}

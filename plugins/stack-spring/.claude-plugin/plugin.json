@@ -1,8 +1,17 @@
 {
   "name": "stack-spring",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Spring Boot 전용: Java 편집 시 해당 모듈 컴파일, 턴 종료 시 빌드(또는 테스트) 통과 강제, 적용된 Flyway 마이그레이션 수정 차단, 설정 파일 하드코딩 시크릿 경고, 리뷰·테스트·성능 분석 에이전트. Gradle 우선, 없으면 Maven.",
-  "author": { "name": "welikeWatermelon" },
+  "author": {
+    "name": "welikeWatermelon"
+  },
   "repository": "https://github.com/welikeWatermelon/claude-harness",
-  "keywords": ["spring", "java", "gradle", "maven", "jpa", "flyway"]
+  "keywords": [
+    "spring",
+    "java",
+    "gradle",
+    "maven",
+    "jpa",
+    "flyway"
+  ]
 }

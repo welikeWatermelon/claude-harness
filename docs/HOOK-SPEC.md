@@ -79,6 +79,19 @@
 | 결과 | 승인 없음/만료 → deny + 계획 작성법 / 범위 밖 파일 → deny + 승인된 파일 목록 |
 | 한계 | git 사용자 정보는 본인이 바꿀 수 있어 보안 경계가 아니라 **팀 합의 장치**예요. 실제 강제는 PR 리뷰·브랜치 보호와 함께 |
 
+### C12. 결정 미루기 (막히면 건너뛰고 마지막에 질문)
+| 항목 | 내용 |
+|---|---|
+| 목적 | 사람이 자리를 비워도 결정이 필요 없는 작업은 계속 진행되고, 결정할 것만 마지막에 모이게 |
+| 종류 / 트리거 | PreToolUse(AskUserQuestion) · Stop · SessionStart · PreCompact |
+| 동작 | 이번 메시지에서 이미 파일을 바꾸거나 변경 명령을 실행했으면 AskUserQuestion 을 deny → "`.harness/pending-decisions.md` 에 D번호로 적고, 겹치는 작업만 보류하고 계속" 안내. Stop 에서 미해결 항목(`- [ ]`)이 있으면 한 번 block 해서 질문 차례를 열고, 그 뒤엔 같은 메시지 안에서 AskUserQuestion 허용 |
+| 예외 | 계획 단계(아직 아무것도 안 바꿈)의 질문, `deferQuestions:false` |
+| 이어받기 | SessionStart·컴팩션 스냅샷에 미해결 목록 표시 → `/workflow:decide` |
+| 한계 | 채팅 텍스트로 묻는 것은 막을 수 없어요 (규칙 안내로만) |
+
+### C13. 다른 레포 파일의 보호 브랜치
+fullstack 처럼 한 세션에서 다른 레포(예: 프론트) 파일을 고칠 때, 그 파일이 속한 레포의 현재 브랜치로 보호 브랜치 규칙을 적용해요.
+
 ### C8. 변경 이력
 | 목적 | 언제·어떤 요청으로·어떤 파일이 바뀌었는지 추적 |
 |---|---|
@@ -160,3 +173,20 @@
 | 종류 / 트리거 | PostToolUse / 원격 명령 |
 |---|---|
 | 동작 | 호스트·명령·실패 여부·출력 앞 600자 기록 → `/ops:audit`, `/ops:incident` 타임라인 재료 |
+
+---
+
+## fullstack (백엔드·프론트 분리 레포)
+
+### F1. API 계약 검사 (백엔드 레포)
+| 항목 | 내용 |
+|---|---|
+| 목적 | DTO 필드 이름을 바꿔도 양쪽 빌드는 통과하고 화면에서야 깨지는 문제 방지 |
+| 종류 / 트리거 | PostToolUse(Controller·DTO·Request·Response·ErrorCode·Advice 파일 수정 표시) → Stop |
+| 동작 | springdoc-openapi-gradle-plugin `generateOpenApiDocs` 로 `build/openapi.json` 생성 → 커밋된 스냅샷 `docs/api/openapi.json` 과 비교 → 스냅샷 갱신, `docs/api/API_CHANGES.md` 기록 |
+| 깨지는 변경 | 엔드포인트 삭제, 필드 삭제·타입 변경·enum 값 삭제, 요청 필수 필드·필수 파라미터 추가, 응답/요청 스키마 교체 |
+| 결과 | 깨지는 변경이면 프론트 레포에서 사용처를 찾아 `[화면]`(컴포넌트)/`[코드]`(API·타입) 로 나눠 block 한 번. 원칙: `[코드]` 는 프론트를 고치고, `[화면]` 에서 보이던 값이 사라지거나 의미가 바뀌면 결정 대기 목록(C12)으로 → 마지막에 개발자에게 질문. 호환 변경은 "프론트에서 /fullstack:api-sync" 안내 |
+| 예외 | night·readonly 모드(앱을 띄울 수 없음 → 표시만 남기고 다음에 검사), 명세 생성 실패(경고만) |
+
+### F2. 계약 갱신 알림 (프론트 레포)
+SessionStart 에서 백엔드 스냅샷이 프론트 생성 타입(`src/api/generated/schema.ts`)보다 새로우면 `/fullstack:api-sync` 를 제안해요.

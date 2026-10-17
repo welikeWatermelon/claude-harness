@@ -10,6 +10,7 @@ GitHub 레포 하나가 Claude Code **플러그인 마켓플레이스(`yj-harnes
 | **stack-spring** | Java 편집 시 컴파일, 끝내기 전 빌드 검증, Flyway 보호 / 리뷰·테스트·성능 에이전트, 스킬 5개 (Gradle 우선, 없으면 Maven) | Spring Boot |
 | **stack-react** | 끝내기 전 타입체크/린트 / 리뷰 에이전트, 스킬 2개 | React |
 | **ops** | 원격 명령 감사 로그·파괴 명령 차단·prod 확인 / 배포 점검·로그 분석 에이전트 | 서버 작업하는 프로젝트 |
+| **fullstack** | 백엔드·프론트 분리 레포의 API 계약 연동: springdoc 명세 생성·비교, 프론트 사용처 추적 / 명세 작성·계약 리뷰 에이전트 | 백엔드 레포와 프론트 레포 양쪽 (`/fullstack:setup`) |
 
 요구사항: Claude Code, **Node.js 18+** (훅이 node 로 실행돼요), git.
 
@@ -53,6 +54,8 @@ GitHub 레포 하나가 Claude Code **플러그인 마켓플레이스(`yj-harnes
 | `/core:mode standard` | 기본으로 복귀 |
 | `/core:status` · `/core:log` | 현재 상태 · 언제 어떤 요청으로 무엇이 바뀌었나 |
 | `/workflow:done <작업>` | 완료 조건(통과할 테스트 목록) 먼저 합의 |
+| `/workflow:decide` | 자리 비운 사이 모인 결정을 한 번에 정리하고 보류 작업 재개 |
+| `/fullstack:setup` · `:spec` · `:api-sync` · `:feature` | 레포 연결 · 명세 생성·비교 · 프론트 타입 갱신 · 기능 끝까지 구현 |
 | `/workflow:commit` | 논리 단위로 나눠 커밋 (계획 먼저 보여줌) |
 | `/workflow:handoff` | 다른 노트북에서 이어받을 인수인계 작성 |
 | `/workflow:failure <실수>` | 실패 기록 + 훅 승격 검토 |
@@ -61,6 +64,10 @@ GitHub 레포 하나가 Claude Code **플러그인 마켓플레이스(`yj-harnes
 | `/ops:deploy-check` · `/ops:triage` · `/ops:audit` | 배포 점검 · 에러 분석 · 원격 명령 감사 |
 
 ---
+
+## 막히면 미뤄두고 계속하기
+
+작업 도중 사람의 결정이 필요하면 Claude 는 바로 묻지 않고 `.harness/pending-decisions.md` 에 적은 뒤, 그 결정과 겹치는 작업만 보류하고 나머지를 끝까지 해요. 작업 시작 후의 중간 질문(AskUserQuestion)은 하네스가 막고, 모든 작업이 끝나면 Stop 훅이 "이제 한 번에 질문하세요" 차례를 열어줘요. 자리를 비웠다 돌아오면 `/workflow:decide`. (계획 단계 질문은 허용, `deferQuestions:false` 로 끌 수 있음)
 
 ## 설정 (`.claude/harness.json`, 개인은 `.claude/harness.local.json`)
 ```json

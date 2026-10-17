@@ -149,3 +149,41 @@ test('승인 토큰 유효성 / 범위', () => {
   assert.ok(fileInScope(t, 'src/test/java/ATest.java').ok);
   assert.ok(!fileInScope(t, 'src/test/java/ATest.java', null, { allowTestFiles: false }).ok);
 });
+
+import { diffOpenApi, searchTerms } from '../shared/lib/openapi-diff.mjs';
+
+test('OpenAPI 비교: 깨지는 변경 / 호환 변경', () => {
+  const base = {
+    paths: {
+      '/api/posts/{id}': { get: { responses: { 200: { content: { 'application/json': { schema: { $ref: '#/components/schemas/PostResponse' } } } } } } },
+      '/api/posts': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/CreatePostRequest' } } } }, responses: { 200: {} } } },
+      '/api/old': { delete: { responses: { 200: {} } } },
+    },
+    components: {
+      schemas: {
+        PostResponse: { properties: { id: { type: 'integer' }, title: { type: 'string' }, authorName: { type: 'string' }, status: { type: 'string', enum: ['OPEN', 'CLOSED'] } } },
+        CreatePostRequest: { required: ['title'], properties: { title: { type: 'string' } } },
+      },
+    },
+  };
+  const next = JSON.parse(JSON.stringify(base));
+  delete next.paths['/api/old'];
+  next.paths['/api/new'] = { get: { responses: { 200: {} } } };
+  delete next.components.schemas.PostResponse.properties.authorName;
+  next.components.schemas.PostResponse.properties.id = { type: 'string' };
+  next.components.schemas.PostResponse.properties.status.enum = ['OPEN'];
+  next.components.schemas.PostResponse.properties.likeCount = { type: 'integer' };
+  next.components.schemas.CreatePostRequest.properties.category = { type: 'string' };
+  next.components.schemas.CreatePostRequest.required = ['title', 'category'];
+  const ch = diffOpenApi(base, next);
+  const k = (kind) => ch.filter((c) => c.kind === kind).map((c) => c.target);
+  assert.deepEqual(k('endpoint-removed'), ['DELETE /api/old']);
+  assert.deepEqual(k('endpoint-added'), ['GET /api/new']);
+  assert.deepEqual(k('field-removed'), ['PostResponse.authorName']);
+  assert.deepEqual(k('field-type-changed'), ['PostResponse.id']);
+  assert.deepEqual(k('enum-value-removed'), ['PostResponse.status']);
+  assert.deepEqual(k('required-field-added'), ['CreatePostRequest.category']);
+  assert.ok(k('field-added').includes('PostResponse.likeCount'));
+  assert.deepEqual(searchTerms({ kind: 'field-removed', target: 'PostResponse.authorName' }), ['authorName', 'PostResponse']);
+  assert.deepEqual(searchTerms({ kind: 'endpoint-removed', target: 'GET /api/posts/{id}' }), ['/api/posts']);
+});

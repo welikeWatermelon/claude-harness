@@ -6,7 +6,18 @@
 import path from 'node:path';
 import { runHook, deny, ask, pass } from '../lib/hook-io.mjs';
 import { projectRoot, loadConfig, toolFilePath, isSecretPath, matchesAny } from '../lib/config.mjs';
-import { currentBranch, hasCommits, isGitRepo, isInside, stagedFiles, stagedDiff } from '../lib/proc.mjs';
+import { currentBranch, hasCommits, isGitRepo, isInside, stagedFiles, stagedDiff, gitRoot } from '../lib/proc.mjs';
+import { existsSync } from 'node:fs';
+
+function existingDir(p) {
+  let d = path.dirname(p);
+  while (!existsSync(d)) {
+    const up = path.dirname(d);
+    if (up === d) return d;
+    d = up;
+  }
+  return d;
+}
 import { classify, pushTargetsProtected, isGitCommit, isBranchCreate } from '../lib/bash-rules.mjs';
 import { getMode, loadSession, MODES } from '../lib/state.mjs';
 import { gateStatus, tokenValid, fileInScope } from '../lib/plan-gate.mjs';
@@ -82,6 +93,23 @@ await runHook(
     const mode = getMode(root, cfg);
     const log = (decision, rule, reason, extra = {}) => logEvent(root, cfg, sessionId, 'guard', { tool, decision, rule, reason, mode, ...extra });
 
+    // ---------- AskUserQuestion: 작업 도중 질문은 미루기 ----------
+    // 계획 단계(이번 메시지에서 아직 아무것도 안 바꿈)의 질문은 허용.
+    // 이미 작업을 시작했으면 질문 대신 대기 목록에 적고 계속 → Stop 훅이 마지막에 질문 차례를 열어줌
+    if (tool === 'AskUserQuestion') {
+      if (!cfg.deferQuestions) return pass();
+      const s = loadSession(root, sessionId);
+      const started = (s.turnFiles || []).length > 0 || s.turnActed;
+      if (started && s.flushTurn !== (s.promptCount || 0)) {
+        log('deny', 'defer-question', 'mid-task question');
+        deny(
+          '작업 도중에는 질문하지 않아요. 이 결정을 .harness/pending-decisions.md 에 "- [ ] D<번호>: 질문 / 막힌 이유 / 선택지(추천) / 같이 보류한 작업 / 임시 처리" 로 적고, ' +
+            '이 결정과 겹치는 작업만 보류한 채 나머지 작업을 계속하세요. 모든 작업이 끝나면 하네스가 질문할 차례를 알려줘요.',
+        );
+      }
+      return pass();
+    }
+
     // ---------- Read / Grep: 시크릿 파일 ----------
     if (tool === 'Read' || tool === 'Grep') {
       const f = toolFilePath(ti);
@@ -112,6 +140,17 @@ await runHook(
         if (b && cfg.protectedBranches.includes(b) && !rel.startsWith('.harness/') && !cfg.protectedBranchAllowPaths.some((p) => rel.startsWith(p))) {
           log('deny', 'protected-branch', rel, { branch: b });
           deny(BRANCH_MSG(b));
+        }
+      }
+      // 다른 레포 파일 (fullstack: 백엔드 세션에서 프론트 레포 수정) → 그 레포의 브랜치로 판단
+      if (abs && !inRepo) {
+        const otherRoot = gitRoot(existingDir(abs));
+        if (otherRoot && path.resolve(otherRoot) !== path.resolve(root) && hasCommits(otherRoot)) {
+          const ob = currentBranch(otherRoot);
+          if (ob && cfg.protectedBranches.includes(ob)) {
+            log('deny', 'protected-branch-peer', abs, { branch: ob, repo: otherRoot });
+            deny(`다른 레포(${path.basename(otherRoot)})의 보호 브랜치 '${ob}' 예요.\n그 레포에서 먼저 브랜치를 만드세요:\n  git -C "${otherRoot}" switch -c feature/<짧은-설명>`);
+          }
         }
       }
       if (inRepo && !rel.startsWith('.harness/')) {

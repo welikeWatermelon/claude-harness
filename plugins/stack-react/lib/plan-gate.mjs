@@ -46,7 +46,7 @@ export function gateStatus(root, mode) {
 }
 
 const FILE_SECTION = /^#{1,4}\s*(변경\s*파일|변경할\s*파일|수정\s*파일|files?(\s+to\s+change)?|what\s+will\s+change|changed\s+files)(?=\s|$|[:：(])[^\n]*$/im;
-const PATH_TOKEN = /(?:^|[\s`'"(\[:-])((?:[A-Za-z]:[/\\])?(?:\.{0,2}[/\\])?(?:[\w.@-]+[/\\])*[\w.@-]+(?:\.[A-Za-z0-9]{1,8}|[/\\]))(?=$|[\s`'"),\]:])/g;
+const PATH_TOKEN = /(?:^|[\s`'"(\[:-])((?:\.{0,2}\/)?(?:[\w.@-]+\/)*[\w.@-]+(?:\.[A-Za-z0-9]{1,8}|\/))(?=$|[\s`'"),\]:])/g;
 
 /** 계획 본문에서 "## 변경 파일" 섹션의 경로만 추출 */
 export function parsePlanScope(plan, root) {

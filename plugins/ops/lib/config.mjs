@@ -50,6 +50,26 @@ export const DEFAULTS = {
     allowNewFilesInPlannedDirs: true,
     allowTestFiles: true,
   },
+  // 결정 미루기: 작업을 시작한 뒤에는 중간 질문(AskUserQuestion)을 막고 대기 목록에 적게 함 → 끝날 때 한 번에 질문
+  deferQuestions: true,
+  // fullstack 플러그인 (백엔드·프론트 레포가 분리된 경우)
+  fullstack: {
+    role: null, // 'backend' | 'frontend'
+    peerPath: null, // 상대 레포 경로 (예: "../holssi_front")
+    backendModule: '.', // 멀티모듈이면 API 모듈 경로
+    openapi: {
+      gradleTask: 'generateOpenApiDocs', // springdoc-openapi-gradle-plugin
+      generateCommand: null, // Maven 등 직접 지정 시 ["./mvnw","-q","verify"] 형태
+      generatedFile: 'build/openapi.json',
+      snapshot: 'docs/api/openapi.json', // 커밋되는 계약 스냅샷
+      timeoutSec: 300,
+    },
+    frontend: {
+      specFrom: null, // 프론트 레포에서 읽을 명세 경로 (기본: <peerPath>/docs/api/openapi.json)
+      typesOut: 'src/api/generated/schema.ts',
+      srcDir: 'src',
+    },
+  },
   stopLoopLimit: 3,
 };
 

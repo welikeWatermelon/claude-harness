@@ -56,6 +56,7 @@ await runHook(
     updateSession(root, sid, (s) => {
       s.promptCount = (s.promptCount || 0) + 1;
       s.turnFiles = [];
+      s.turnActed = false;
       s.stopBlocks = 0;
       s.lastPrompt = redact(prompt).slice(0, 500);
       s.prompts = [...(s.prompts || []), s.lastPrompt].slice(-5);
