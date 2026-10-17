@@ -37,7 +37,24 @@ export const DEFAULTS = {
   react: {
     verifyOnStop: 'typecheck', // off | typecheck | lint | build
     verifyTimeoutSec: 300,
+    eslintFixOnEdit: true, // R1: 수정한 파일에 eslint --fix (eslint 가 설치된 경우만)
+    eslintTimeoutSec: 60,
+    testOnStop: true, // R11: 끝낼 때 바뀐 파일과 짝인 테스트만 vitest/jest 로 실행
+    testTimeoutSec: 240,
   },
+  // stack-backend (Spring 이 아닌 백엔드: Node / Python / Go / JVM)
+  backend: {
+    verifyOnStop: 'check', // off | check(타입체크·컴파일·vet) | test
+    verifyTimeoutSec: 300,
+  },
+  // stack-frontend (React 가 아닌 프론트: Vue·Nuxt / Android / iOS)
+  frontend: {
+    verifyOnStop: 'check', // off | check
+    verifyTimeoutSec: 300,
+    androidTask: 'compileDebugSources', // Android 검증 Gradle 태스크
+  },
+  // 코드 규칙 강도 덮어쓰기: { "S6": "off", "R4": "block", "B7": "warn" }
+  rules: {},
   ops: {
     allowedHosts: [], // 비어 있으면 호스트 제한 없음(로그만)
     prodKeywords: ['prod', 'production', 'live'],
@@ -63,11 +80,15 @@ export const DEFAULTS = {
       generatedFile: 'build/openapi.json',
       snapshot: 'docs/api/openapi.json', // 커밋되는 계약 스냅샷
       timeoutSec: 300,
+      useOasdiff: true, // oasdiff 가 PATH 에 있으면 breaking 판정에 사용 (F8)
     },
     frontend: {
       specFrom: null, // 프론트 레포에서 읽을 명세 경로 (기본: <peerPath>/docs/api/openapi.json)
       typesOut: 'src/api/generated/schema.ts',
       srcDir: 'src',
+      language: 'ts', // ts | swift | kotlin (프론트가 iOS·Android 앱인 경우)
+      swiftSpecOut: 'openapi.json', // swift-openapi-generator 가 읽는 위치 (타깃 Sources/<Target>/openapi.json 등)
+      kotlinSpecOut: 'openapi/openapi.json',
     },
   },
   stopLoopLimit: 3,

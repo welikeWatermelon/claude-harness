@@ -1,0 +1,10 @@
+{
+  "name": "stack-backend",
+  "version": "2.3.0",
+  "description": "Spring 이 아닌 백엔드(Node Express/NestJS, Python FastAPI/Django, Go, Kotlin·Java): 코드 규칙 B1~B11, 커밋된 마이그레이션 보호, 턴 종료 시 타입체크·컴파일·vet 검증, 리뷰 에이전트",
+  "author": {
+    "name": "welikeWatermelon"
+  },
+  "repository": "https://github.com/welikeWatermelon/claude-harness",
+  "keywords": ["backend", "node", "nestjs", "express", "python", "fastapi", "django", "go", "kotlin"]
+}

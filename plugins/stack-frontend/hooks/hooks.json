@@ -1,0 +1,20 @@
+{
+  "description": "stack-frontend 훅 (node 실행) — 언어는 파일 확장자·빌드 파일로 자동 감지",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/pre-edit.mjs"], "timeout": 10 } ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/post-edit.mjs"], "timeout": 30 } ]
+      }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/stop-verify.mjs"], "timeout": 600, "statusMessage": "Frontend: 종료 전 타입체크·컴파일 검증 중..." } ] }
+    ]
+  }
+}

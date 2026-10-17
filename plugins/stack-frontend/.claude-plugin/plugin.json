@@ -1,0 +1,10 @@
+{
+  "name": "stack-frontend",
+  "version": "2.3.0",
+  "description": "React 가 아닌 프론트(Vue·Nuxt, Android Kotlin, iOS Swift): 코드 규칙(V·A·I·W), 앱 설정 파일 보호, 턴 종료 시 vue-tsc·nuxi typecheck·Gradle compileDebugSources(·macOS swift build) 검증, 리뷰 에이전트",
+  "author": {
+    "name": "welikeWatermelon"
+  },
+  "repository": "https://github.com/welikeWatermelon/claude-harness",
+  "keywords": ["frontend", "vue", "nuxt", "android", "kotlin", "ios", "swift"]
+}

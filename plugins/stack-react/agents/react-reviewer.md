@@ -12,4 +12,7 @@ model: sonnet
 4. **API 계약** — 백엔드 응답 래퍼(`{ success, data }` 등)와 타입이 맞는가, 에러 코드 처리, 페이지네이션 필드 이름
 5. **타입** — `any`, 단언(`as`) 남용, null 가능 값 처리
 6. **접근성·UX** — 버튼/링크 구분, label, 키보드 포커스, 이미지 alt
+7. **하네스 권고 규칙 (훅으로 못 잡는 것)**
+   - **R10 비동기·의존성** — 처리하지 않은 Promise(`await` 도 `.catch` 도 `void` 도 없는 호출: `@typescript-eslint/no-floating-promises`), `react-hooks/exhaustive-deps` 경고를 eslint-disable 로 덮은 곳
+   - 훅이 이미 경고한 R3(이유 없는 eslint-disable·@ts-ignore), R4(any), R5(console.log), R6(API 주소 하드코딩), R7(공개 환경변수에 비밀값), R8(컴포넌트에서 fetch/axios 직접 호출), R9(Next 'use client' 의 서버 코드)가 diff 에 남아 있으면 같이 적어
 출력: `[높음|중간|낮음] 파일:라인 — 문제 / 이유 / 수정 제안`. 근거 없는 지적은 하지 마.

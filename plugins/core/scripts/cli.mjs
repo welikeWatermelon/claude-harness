@@ -3,7 +3,7 @@
 //   node cli.mjs status            현재 모드·브랜치·설정 요약
 //   node cli.mjs log [N]           최근 차단/변경 이력 N건
 //   node cli.mjs detect            스택 감지 결과(JSON)
-//   node cli.mjs init [--apply] [--stacks spring,react] [--marketplace owner/repo]
+//   node cli.mjs init [--apply] [--stacks spring,react,backend,frontend] [--marketplace owner/repo]
 //                                  .claude/harness.json, .claude/settings.json(플러그인 등록·allow), .gitignore 계획/적용
 //   node cli.mjs doctor            설치 상태 점검
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
@@ -47,7 +47,10 @@ function status() {
   console.log(`  게이트 대상 팀원(planGate.requiredFor): ${req.length ? req.join(', ') : '(없음)'} / 승인 유지: ${cfg.planGate.scope === 'files' ? `계획 파일 한정, ${cfg.planGate.ttlHours}시간` : '승인한 메시지에서만'}`);
 
   console.log(`Spring 검증: 편집 시 컴파일=${cfg.spring.compileOnEdit}, 턴 종료 시=${cfg.spring.verifyOnStop}`);
-  console.log(`React 검증: 턴 종료 시=${cfg.react.verifyOnStop}`);
+  console.log(`React 검증: 턴 종료 시=${cfg.react.verifyOnStop}, eslint --fix=${cfg.react.eslintFixOnEdit}, 관련 테스트=${cfg.react.testOnStop}`);
+  console.log(`Backend/Frontend 검증: ${cfg.backend.verifyOnStop} / ${cfg.frontend.verifyOnStop}`);
+  const ov = Object.entries(cfg.rules || {}).filter(([k]) => !k.startsWith('$'));
+  console.log(`규칙 덮어쓰기: ${ov.length ? ov.map(([k, v]) => `${k}=${v}`).join(', ') : '(없음 — 기본 강도)'}`);
   console.log(`설정 파일: .claude/harness.json ${existsSync(path.join(root, '.claude/harness.json')) ? '있음' : '없음(기본값 사용)'}`);
   console.log(`모드 목록: ${Object.keys(MODES).join(' | ')}  (바꾸기: /core:mode <이름>)`);
 }
@@ -103,6 +106,8 @@ const BASE_ALLOW = [
 const STACK_ALLOW = {
   spring: ['Bash(./gradlew compileJava:*)', 'Bash(./gradlew compileTestJava:*)', 'Bash(./gradlew test:*)', 'Bash(./gradlew build:*)', 'Bash(./mvnw compile:*)', 'Bash(./mvnw test:*)'],
   react: ['Bash(npm run lint:*)', 'Bash(npm run build:*)', 'Bash(npm test:*)', 'Bash(npx tsc --noEmit:*)', 'Bash(pnpm lint:*)', 'Bash(pnpm build:*)'],
+  backend: ['Bash(npm run lint:*)', 'Bash(npm test:*)', 'Bash(npx tsc --noEmit:*)', 'Bash(go build:*)', 'Bash(go vet:*)', 'Bash(go test:*)', 'Bash(python -m pytest:*)', 'Bash(python3 -m pytest:*)', 'Bash(pytest:*)', 'Bash(ruff check:*)'],
+  frontend: ['Bash(npm run lint:*)', 'Bash(npm run build:*)', 'Bash(npx vue-tsc --noEmit:*)', 'Bash(npx nuxi typecheck:*)', 'Bash(./gradlew :app:compileDebugSources:*)', 'Bash(./gradlew lintDebug:*)', 'Bash(./gradlew testDebugUnitTest:*)'],
 };
 
 function init() {
@@ -123,8 +128,11 @@ function init() {
         requiredFor: [],
         ttlHours: 3,
       },
-      spring: { compileOnEdit: true, verifyOnStop: 'compile' },
-      react: { verifyOnStop: 'typecheck' },
+      ...(stacks.includes('spring') ? { spring: { compileOnEdit: true, verifyOnStop: 'compile' } } : {}),
+      ...(stacks.includes('react') ? { react: { verifyOnStop: 'typecheck', eslintFixOnEdit: true, testOnStop: true } } : {}),
+      ...(stacks.includes('backend') ? { backend: { verifyOnStop: 'check' } } : {}),
+      ...(stacks.includes('frontend') ? { frontend: { verifyOnStop: 'check' } } : {}),
+      rules: { $comment: '코드 규칙 강도 덮어쓰기: off | warn | block. 예: { "S6": "off", "R4": "block" } — 규칙 목록은 하네스 README' },
     };
     plan.push({ file: '.claude/harness.json', action: 'create', content: hj });
     if (apply) {

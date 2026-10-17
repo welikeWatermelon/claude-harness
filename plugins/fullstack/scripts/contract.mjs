@@ -1,9 +1,10 @@
 // contract.mjs — fullstack 플러그인 공통 로직 (명세 생성, 비교, 프론트 사용처 검색)
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync, copyFileSync, appendFileSync } from 'node:fs';
 import path from 'node:path';
-import { run, tail } from '../lib/proc.mjs';
+import { run, tail, whichCmd } from '../lib/proc.mjs';
+import os from 'node:os';
 import { detectJvmBuild } from '../lib/build-detect.mjs';
-import { diffOpenApi, searchTerms } from '../lib/openapi-diff.mjs';
+import { diffOpenApi, searchTerms, fromOasdiff } from '../lib/openapi-diff.mjs';
 
 export const API_FILE = /(Controller|Dto|DTO|Request|Response|ErrorCode|ExceptionHandler|Advice|Api)\.(java|kt)$|[\\/](dto|controller|api|web)[\\/].*\.(java|kt)$/;
 
@@ -57,10 +58,44 @@ export function compareAndSave(root, fs, gen) {
   mkdirSync(path.dirname(snap), { recursive: true });
   writeFileSync(snap, JSON.stringify(gen.spec, null, 2) + '\n', 'utf8');
   if (!old) return { first: true, changes: [], snapshot: snap };
-  return { first: false, changes: diffOpenApi(old, gen.spec), snapshot: snap };
+  return { first: false, changes: diffSpecs(old, gen.spec, { useOasdiff: (fs.openapi || {}).useOasdiff !== false }), snapshot: snap };
 }
 
-const SKIP = new Set(['node_modules', 'dist', 'build', '.next', '.git', 'coverage']);
+/**
+ * F8: oasdiff 가 PATH 에 있으면 breaking 판정은 oasdiff 로 (규칙 300여 개), 호환 변경·format 메모는 내장 비교로.
+ *     없으면 내장 비교만. fullstack.openapi.useOasdiff=false 로 끌 수 있음
+ */
+export function diffSpecs(oldSpec, newSpec, { useOasdiff = true } = {}) {
+  const own = diffOpenApi(oldSpec, newSpec);
+  const bin = useOasdiff ? whichCmd('oasdiff') : null;
+  if (!bin) return own;
+  const dir = path.join(os.tmpdir(), `harness-oasdiff-${process.pid}`);
+  try {
+    mkdirSync(dir, { recursive: true });
+    const a = path.join(dir, 'base.json');
+    const b = path.join(dir, 'revision.json');
+    writeFileSync(a, JSON.stringify(oldSpec));
+    writeFileSync(b, JSON.stringify(newSpec));
+    const r = run(bin, ['breaking', a, b, '--format', 'json'], { timeoutSec: 60 });
+    if (!r.ok || !/^\s*(\[|null)/.test(r.out || '')) return own; // 설치 안 됨·실패 → 내장 비교
+    const list = JSON.parse(r.out.trim()) || [];
+    const ext = fromOasdiff(list);
+    return [...ext, ...own.filter((c) => c.severity !== 'breaking'), ...own.filter((c) => c.severity === 'breaking' && c.kind === 'field-format-changed')];
+  } catch {
+    return own;
+  }
+}
+
+const SKIP = new Set(['node_modules', 'dist', 'build', '.next', '.git', 'coverage', 'Pods', 'DerivedData', '.build', '.gradle', 'generated']);
+
+/** 화면 코드인지 추정 — 웹(tsx/jsx/vue), iOS(SwiftUI View·ViewController), Android(Compose Screen·Fragment·Activity·Adapter) */
+export function isDisplayFile(rel) {
+  if (/(^|\/)(api|apis|types|generated|services?|hooks|network|data|repository|dto|models?)\//i.test(rel)) return false;
+  if (/\.(tsx|jsx|vue)$/.test(rel)) return true;
+  if (/\.swift$/.test(rel)) return /(View|ViewController|Cell|Screen)\.swift$|(^|\/)(Views?|Screens?|UI|Presentation)\//.test(rel);
+  if (/\.kt$/.test(rel)) return /(Screen|Fragment|Activity|Adapter|ViewHolder|Composable)\.kt$|(^|\/)(ui|presentation|screens?)\//.test(rel);
+  return false;
+}
 function walk(dir, out = [], depth = 0) {
   if (depth > 12) return out;
   let ents = [];
@@ -73,7 +108,7 @@ function walk(dir, out = [], depth = 0) {
     if (SKIP.has(e.name)) continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p, out, depth + 1);
-    else if (/\.(tsx?|jsx?|vue)$/.test(e.name)) out.push(p);
+    else if (/\.(tsx?|jsx?|vue|swift|kt)$/.test(e.name)) out.push(p);
   }
   return out;
 }
@@ -103,7 +138,7 @@ export function findUsages(peer, fs, changes, limitPerChange = 8) {
         read(f).forEach((line, i) => {
           if (hits.length < limitPerChange && re.test(line)) {
             const rel = path.relative(peer, f).replace(/\\/g, '/');
-            const display = /\.(tsx|jsx|vue)$/.test(f) && !/(^|\/)(api|apis|types|generated|services?|hooks)\//.test(rel);
+            const display = isDisplayFile(rel);
             hits.push({ file: rel, line: i + 1, text: line.trim().slice(0, 120), display });
           }
         });

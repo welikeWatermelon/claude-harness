@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "2.2.4",
+  "version": "2.3.0",
   "description": "개발 흐름 도구: 논리 단위 커밋, PR 설명, 인수인계, 결정/실패 기록, 완료 조건 합의, 무인 실행 프롬프트 세트, worktree 병렬 작업, 계획 비평·완료 검증 에이전트",
   "author": {
     "name": "welikeWatermelon"
