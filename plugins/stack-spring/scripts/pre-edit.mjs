@@ -5,7 +5,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { runHook, deny, pass } from '../lib/hook-io.mjs';
-import { projectRoot, loadConfig, toolFilePath } from '../lib/config.mjs';
+import { projectRoot, loadConfig, toolFilePath, resolveFile } from '../lib/config.mjs';
 import { logEvent } from '../lib/logger.mjs';
 
 await runHook(
@@ -14,7 +14,7 @@ await runHook(
     const cfg = loadConfig(root);
     const f = toolFilePath(input.tool_input || {});
     if (!f) return pass();
-    const abs = path.resolve(root, f);
+    const abs = resolveFile(root, f);
     const norm = abs.replace(/\\/g, '/');
     if (cfg.spring.blockEditingAppliedMigrations && /\/db\/migration\/.*\/?V\d+(_\d+)*__[^/]+\.sql$/i.test(norm) && existsSync(abs)) {
       logEvent(root, cfg, input.session_id, 'guard', { tool: input.tool_name, decision: 'deny', rule: 'flyway-edit-applied', reason: f });

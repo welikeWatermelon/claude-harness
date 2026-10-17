@@ -5,6 +5,7 @@ on:
 jobs:
   test:
     strategy:
+      fail-fast: false # 한 OS 가 실패해도 다른 OS 결과를 끝까지 보기
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}

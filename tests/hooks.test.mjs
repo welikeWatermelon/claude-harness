@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, readdirSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -362,4 +362,12 @@ test('fullstack: DTO 수정 → 명세 생성·비교 → 깨지는 변경이면
   assert.match(r.json.reason, /PostResponse\.authorName/);
   assert.match(r.json.reason, /\[화면\] src\/pages\/Post\.tsx:1/);
   assert.match(readFileSync(path.join(back, 'docs/api/API_CHANGES.md'), 'utf8'), /깨짐.*authorName/);
+});
+
+test('경로 별칭(Windows 8.3 짧은 이름·심볼릭 링크)으로 들어와도 같은 레포로 판단', { skip: process.platform === 'win32' && 'Windows 는 CI 의 RUNNER~1 경로로 이미 검증' }, () => {
+  const dir = makeRepo();
+  const alias = path.join(mkdtempSync(path.join(tmpdir(), 'alias-')), 'link');
+  symlinkSync(dir, alias, 'dir');
+  assert.equal(decision(hook('core', 'pre-tool.mjs', { cwd: alias, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'a.txt'), content: 'x' } })), 'deny');
+  assert.equal(decision(hook('core', 'pre-tool.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(alias, 'a.txt'), content: 'x' } })), 'deny');
 });

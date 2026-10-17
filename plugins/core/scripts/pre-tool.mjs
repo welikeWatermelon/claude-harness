@@ -5,7 +5,7 @@
 //   7) 계획 승인 게이트 — strict 모드이거나 팀 설정 planGate.requiredFor 에 있는 팀원일 때만
 import path from 'node:path';
 import { runHook, deny, ask, pass } from '../lib/hook-io.mjs';
-import { projectRoot, loadConfig, toolFilePath, isSecretPath, matchesAny } from '../lib/config.mjs';
+import { projectRoot, loadConfig, toolFilePath, isSecretPath, resolveFile } from '../lib/config.mjs';
 import { currentBranch, hasCommits, isGitRepo, isInside, stagedFiles, stagedDiff, gitRoot } from '../lib/proc.mjs';
 import { existsSync } from 'node:fs';
 
@@ -123,7 +123,7 @@ await runHook(
     // ---------- 파일 수정 도구 ----------
     if (EDIT_TOOLS.has(tool)) {
       const f = toolFilePath(ti);
-      const abs = f ? path.resolve(root, f) : null;
+      const abs = resolveFile(root, f);
       const rel = abs ? path.relative(root, abs).replace(/\\/g, '/') : '';
       const inRepo = abs && isInside(root, abs);
 

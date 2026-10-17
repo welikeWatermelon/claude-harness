@@ -3,7 +3,7 @@
 //   <project>/.claude/harness.local.json  개인용 (git 제외) — 위 값을 덮어씀
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { gitRoot } from './proc.mjs';
+import { gitRoot, canon } from './proc.mjs';
 
 export const DEFAULTS = {
   protectedBranches: ['main', 'master', 'develop'],
@@ -97,7 +97,12 @@ function readJson(file) {
 /** 프로젝트 루트: git 루트 → CLAUDE_PROJECT_DIR → cwd */
 export function projectRoot(input = {}) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  return gitRoot(cwd) || process.env.CLAUDE_PROJECT_DIR || cwd;
+  return gitRoot(cwd) || canon(process.env.CLAUDE_PROJECT_DIR || cwd);
+}
+
+/** 도구가 넘긴 파일 경로를 프로젝트 기준 실제 절대경로로 */
+export function resolveFile(root, f) {
+  return f ? canon(path.resolve(root, f)) : null;
 }
 
 export function loadConfig(root) {
