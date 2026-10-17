@@ -123,3 +123,29 @@ test('로그 마스킹', () => {
   assert.ok(!s.includes('supersecret1'));
   assert.ok(!s.includes('eyJzdWIiOiIxIn0'));
 });
+
+import { parsePlanScope, tokenValid, fileInScope } from '../shared/lib/plan-gate.mjs';
+
+test('계획 파일 목록 추출', () => {
+  const root = process.platform === 'win32' ? 'C:\\repo' : '/repo';
+  const abs = process.platform === 'win32' ? 'C:\\repo\\src\\b\\B.java' : '/repo/src/b/B.java';
+  const plan = `# 계획\n## 변경 파일\n- src/a/A.java :: L10 수정\n- \`${abs}\`\n- docs/ (새 문서 폴더)\n## 위험\n- src/x/Ignored.java 는 위험 섹션이라 제외\n`;
+  const s = parsePlanScope(plan, root);
+  assert.deepEqual(s.files.sort(), ['src/a/A.java', 'src/b/B.java']);
+  assert.ok(s.dirs.includes('docs') && s.dirs.includes('src/a'));
+  assert.deepEqual(parsePlanScope('## Files to change\n1. app/Main.kt\n', root).files, ['app/Main.kt']);
+  assert.deepEqual(parsePlanScope('계획: A.java 수정', root).files, [], '섹션이 없으면 비어 있음');
+});
+
+test('승인 토큰 유효성 / 범위', () => {
+  const t = { approvedAt: new Date().toISOString(), scope: 'files', files: ['src/a/A.java'], dirs: ['src/a'], branch: 'f', mode: 'standard', turn: 1 };
+  assert.ok(tokenValid(t, { branch: 'f', mode: 'standard', promptCount: 5 }).ok);
+  assert.ok(!tokenValid(t, { branch: 'g', mode: 'standard' }).ok);
+  assert.ok(!tokenValid(t, { branch: 'f', mode: 'strict' }).ok);
+  assert.ok(!tokenValid({ ...t, approvedAt: new Date(Date.now() - 4 * 3600e3).toISOString() }, { branch: 'f', mode: 'standard', ttlHours: 3 }).ok);
+  assert.ok(!tokenValid({ ...t, scope: 'turn' }, { branch: 'f', mode: 'standard', promptCount: 2 }).ok);
+  assert.ok(fileInScope(t, 'src/a/A.java').ok);
+  assert.ok(!fileInScope(t, 'src/b/B.java').ok);
+  assert.ok(fileInScope(t, 'src/test/java/ATest.java').ok);
+  assert.ok(!fileInScope(t, 'src/test/java/ATest.java', null, { allowTestFiles: false }).ok);
+});

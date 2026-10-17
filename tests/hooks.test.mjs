@@ -82,24 +82,126 @@ test('core: 모드 전환은 사용자 프롬프트로만, night 모드 제한',
   assert.equal(decision(hook('core', 'pre-tool.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, '.harness', 'done-criteria.md'), content: '- [ ] t' } })), 'pass');
 });
 
-test('core: strict 모드 — 계획 승인 전 차단, ExitPlanMode 후 허용, 다음 프롬프트에서 다시 차단', () => {
-  const dir = makeRepo({ branch: 'feature/st' });
-  hook('core', 'user-prompt.mjs', { cwd: dir, prompt: '/core:mode strict' });
-  const write = () => decision(hook('core', 'pre-tool.mjs', { cwd: dir, tool_name: 'Edit', tool_input: { file_path: path.join(dir, 'README.md'), old_string: 't', new_string: 'u' } }));
-  hook('core', 'user-prompt.mjs', { cwd: dir, prompt: 'README 고쳐줘' });
-  assert.equal(write(), 'deny');
-  hook('core', 'post-tool.mjs', { cwd: dir, tool_name: 'ExitPlanMode', tool_input: { plan: '## 변경\nREADME.md :: 제목 변경' }, tool_response: {} });
-  assert.equal(write(), 'pass');
-  hook('core', 'stop.mjs', { cwd: dir });
-  assert.equal(write(), 'pass', 'Stop 에서는 토큰을 지우지 않음 (다른 Stop 훅이 block 해서 턴이 이어질 수 있음)');
-  hook('core', 'user-prompt.mjs', { cwd: dir, prompt: '다른 것도 바꿔줘' });
-  assert.equal(write(), 'deny');
+// ---------- 계획 게이트 ----------
+function teamConfig(dir, requiredFor, extra = {}) {
+  mkdirSync(path.join(dir, '.claude'), { recursive: true });
+  writeFileSync(path.join(dir, '.claude', 'harness.json'), JSON.stringify({ planGate: { requiredFor, ...extra } }));
+}
+const edit = (dir, rel) => decision(hook('core', 'pre-tool.mjs', { cwd: dir, tool_name: 'Edit', tool_input: { file_path: path.join(dir, rel), old_string: 'a', new_string: 'b' } }));
+const write = (dir, rel) => decision(hook('core', 'pre-tool.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, rel), content: 'x' } }));
+const prompt = (dir, text) => hook('core', 'user-prompt.mjs', { cwd: dir, prompt: text });
+const approve = (dir, plan) => hook('core', 'post-tool.mjs', { cwd: dir, tool_name: 'ExitPlanMode', tool_input: { plan }, tool_response: {} });
+const PLAN = '# 환불 수정\n## 변경 파일\n- src/main/java/app/RefundService.java\n- `src/main/java/app/RefundController.java`\n## 위험\n- 없음\n';
+
+function seedFiles(dir) {
+  for (const f of ['src/main/java/app/RefundService.java', 'src/main/java/app/RefundController.java', 'src/main/java/app/OrderService.java']) {
+    mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+    writeFileSync(path.join(dir, f), 'class A {}\n');
+  }
+}
+
+test('계획 게이트: 기본은 아무에게도 안 걸림 (본인·동등한 동료는 바로 수정)', () => {
+  const dir = makeRepo({ branch: 'feature/peer' });
+  seedFiles(dir);
+  prompt(dir, '환불 고쳐줘');
+  assert.equal(edit(dir, 'src/main/java/app/OrderService.java'), 'pass');
+  assert.equal(prompt(dir, '로그인 기능 만들어줘').json, null, '모호한 요청 안내도 게이트 대상에게만');
 });
 
-test('core: 모호한 요청엔 Plan 안내 주입, 구체적 요청엔 없음', () => {
-  const dir = makeRepo({ branch: 'feature/v' });
-  assert.match(hook('core', 'user-prompt.mjs', { cwd: dir, prompt: '로그인 기능 만들어줘' }).json.hookSpecificOutput.additionalContext, /Plan/);
-  assert.equal(hook('core', 'user-prompt.mjs', { cwd: dir, prompt: 'AuthService.java 의 login 에서 null 체크 추가해줘' }).json, null);
+test('계획 게이트: requiredFor 에 있는 팀원만 적용, 다른 동료는 미적용', () => {
+  const dir = makeRepo({ branch: 'feature/team' });
+  seedFiles(dir);
+  teamConfig(dir, ['junior@team.com']);
+  prompt(dir, '수정해줘');
+  assert.equal(edit(dir, 'src/main/java/app/OrderService.java'), 'pass', 'git 사용자 t@t 는 대상 아님');
+  sh('git', ['config', 'user.email', 'junior@team.com'], dir);
+  assert.equal(edit(dir, 'src/main/java/app/OrderService.java'), 'deny');
+  assert.match(prompt(dir, '로그인 기능 만들어줘').json.hookSpecificOutput.additionalContext, /계획 게이트/);
+});
+
+test('계획 게이트: 개인 harness.local.json 으로 requiredFor 를 비워도 빠지지 않음', () => {
+  const dir = makeRepo({ branch: 'feature/local' });
+  seedFiles(dir);
+  teamConfig(dir, ['junior@team.com']);
+  writeFileSync(path.join(dir, '.claude', 'harness.local.json'), JSON.stringify({ planGate: { requiredFor: [] } }));
+  sh('git', ['config', 'user.email', 'junior@team.com'], dir);
+  assert.equal(edit(dir, 'src/main/java/app/OrderService.java'), 'deny');
+});
+
+test('계획 게이트: 승인된 파일은 다음 메시지에서도 수정, 범위 밖은 차단, 새 계획이 범위를 대체', () => {
+  const dir = makeRepo({ branch: 'feature/scope' });
+  seedFiles(dir);
+  teamConfig(dir, ['t@t']);
+  prompt(dir, '환불 고쳐줘');
+  approve(dir, PLAN);
+  assert.equal(edit(dir, 'src/main/java/app/RefundService.java'), 'pass');
+  prompt(dir, 'RefundService 오타도 고쳐줘');
+  assert.equal(edit(dir, 'src/main/java/app/RefundService.java'), 'pass', '다음 메시지에서도 계획 파일은 허용');
+  assert.equal(edit(dir, 'src/main/java/app/RefundController.java'), 'pass', '백틱으로 감싼 경로도 인식');
+  assert.equal(edit(dir, 'src/main/java/app/OrderService.java'), 'deny', '계획 밖 기존 파일');
+  assert.equal(write(dir, 'src/main/java/app/RefundPolicy.java'), 'pass', '계획 폴더 안 새 파일');
+  assert.equal(write(dir, 'src/test/java/app/RefundServiceTest.java'), 'pass', '테스트 파일');
+  assert.equal(write(dir, 'src/main/java/other/New.java'), 'deny', '계획 폴더 밖 새 파일');
+  approve(dir, '## 변경 파일\n- src/main/java/app/OrderService.java\n');
+  assert.equal(edit(dir, 'src/main/java/app/OrderService.java'), 'pass');
+  assert.equal(edit(dir, 'src/main/java/app/RefundService.java'), 'deny', '새 계획이 이전 범위를 대체');
+});
+
+test('계획 게이트: 끝나는 시점 — /core:plan-done · 브랜치 변경 · 모드 변경 · 시간 만료 · 다른 세션', () => {
+  const dir = makeRepo({ branch: 'feature/end' });
+  seedFiles(dir);
+  teamConfig(dir, ['t@t']);
+  const F = 'src/main/java/app/RefundService.java';
+
+  prompt(dir, 'go'); approve(dir, PLAN);
+  assert.equal(prompt(dir, '/core:plan-done').json.hookSpecificOutput.additionalContext.includes('끝냈어요'), true);
+  assert.equal(edit(dir, F), 'deny', 'plan-done');
+
+  prompt(dir, 'go'); approve(dir, PLAN);
+  sh('git', ['switch', '-qc', 'feature/other'], dir);
+  assert.equal(edit(dir, F), 'deny', '브랜치 변경');
+  sh('git', ['switch', '-q', 'feature/end'], dir);
+
+  prompt(dir, 'go'); approve(dir, PLAN);
+  prompt(dir, '/core:mode night');
+  assert.equal(edit(dir, F), 'deny', '모드 변경 (night 이어도 팀원 게이트는 유지)');
+  prompt(dir, '/core:mode standard');
+
+  prompt(dir, 'go'); approve(dir, PLAN);
+  const sf = path.join(dir, '.harness', 'state', 'test-session.json');
+  const st = JSON.parse(readFileSync(sf, 'utf8'));
+  st.token.approvedAt = new Date(Date.now() - 4 * 3600_000).toISOString();
+  writeFileSync(sf, JSON.stringify(st));
+  assert.equal(edit(dir, F), 'deny', '3시간 경과');
+
+  prompt(dir, 'go'); approve(dir, PLAN);
+  const other = decision(hook('core', 'pre-tool.mjs', { session_id: 'another', cwd: dir, tool_name: 'Edit', tool_input: { file_path: path.join(dir, F) } }));
+  assert.equal(other, 'deny', '다른 세션');
+});
+
+test('계획 게이트: 계획에 변경 파일 목록이 없으면 승인한 메시지에서만 유효', () => {
+  const dir = makeRepo({ branch: 'feature/turn' });
+  seedFiles(dir);
+  prompt(dir, '/core:mode strict');
+  prompt(dir, 'go');
+  approve(dir, '# 계획\n대충 고칠게요');
+  assert.equal(edit(dir, 'src/main/java/app/OrderService.java'), 'pass');
+  prompt(dir, '이어서');
+  assert.equal(edit(dir, 'src/main/java/app/OrderService.java'), 'deny');
+});
+
+test('계획 게이트: 파일 바꾸는 셸 명령은 승인한 메시지 안에서만, git commit 은 게이트 대상 아님', () => {
+  const dir = makeRepo({ branch: 'feature/bash' });
+  seedFiles(dir);
+  teamConfig(dir, ['t@t']);
+  const bash = (c) => decision(hook('core', 'pre-tool.mjs', { cwd: dir, tool_name: 'Bash', tool_input: { command: c } }));
+  prompt(dir, 'go');
+  assert.equal(bash('rm src/main/java/app/OrderService.java'), 'deny');
+  approve(dir, PLAN);
+  assert.equal(bash('mv a b'), 'pass');
+  prompt(dir, '다음');
+  assert.equal(bash('mv a b'), 'deny');
+  assert.equal(bash('git commit -m x'), 'pass');
 });
 
 test('core: 변경 이력 — 어떤 요청으로 어떤 파일이 바뀌었는지 기록', () => {
