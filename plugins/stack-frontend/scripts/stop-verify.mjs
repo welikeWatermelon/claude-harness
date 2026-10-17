@@ -8,7 +8,7 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { runHook, block, systemMessage, pass } from '../lib/hook-io.mjs';
 import { projectRoot, loadConfig } from '../lib/config.mjs';
-import { detectNodeProject, detectJvmBuild } from '../lib/build-detect.mjs';
+import { detectNodeProject, detectJvmBuild, jvmFlavor } from '../lib/build-detect.mjs';
 import { run, tail, whichCmd } from '../lib/proc.mjs';
 import { loadSession, updateSession, getMode } from '../lib/state.mjs';
 import { logEvent } from '../lib/logger.mjs';
@@ -29,7 +29,8 @@ function steps(t, root, cfg) {
     const b = detectJvmBuild(t.dir, root);
     if (!b) return [];
     const rel = path.relative(b.runnerDir, b.moduleDir).replace(/[\\/]/g, ':');
-    const task = (cfg.frontend && cfg.frontend.androidTask) || 'compileDebugSources';
+    // Android 모듈만 compileDebugSources, 순수 Kotlin/Java 하위 모듈(:domain 등)은 classes
+    const task = jvmFlavor(b.moduleDir) === 'android' ? (cfg.frontend && cfg.frontend.androidTask) || 'compileDebugSources' : 'classes';
     return [[b.runner, ['-q', '--console=plain', rel ? `:${rel}:${task}` : task], b.runnerDir]];
   }
   if (t.kind === 'ios') {

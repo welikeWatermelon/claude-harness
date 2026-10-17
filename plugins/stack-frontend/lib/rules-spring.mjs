@@ -2,7 +2,7 @@
 // 출처 표시: [KEEPING 실패] = keeping/backend/docs/failures.md 에 실제 기록된 사고, [MelonMe] = 프로젝트 컨벤션, [웹] = 공개 가이드
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { findAll, buildFile } from './code-rules.mjs';
+import { findAll, buildFile, buildFilesUp } from './code-rules.mjs';
 import { mask, methods, classAnnotations, className, hasAnno } from './java-parse.mjs';
 
 const MAIN_JAVA = /src\/main\/(java|kotlin)\/.*\.(java|kt)$/;
@@ -61,12 +61,12 @@ function isSpringBoot3(ctx) {
   const b = buildFile(ctx);
   if (!b) return false;
   const t = b.text;
-  return /org\.springframework\.boot['"]?\s*\)?\s*version\s*['"]3\./.test(t) || /spring-boot-starter-parent<\/artifactId>\s*<version>3\./.test(t) || /springBootVersion\s*=\s*['"]3\./.test(t) || /jakarta\./.test(t);
+  return /org\.springframework\.boot['"]?\s*\)?\s*version\s*['"]3\./.test(t) || /spring-boot-starter-parent<\/artifactId>\s*<version>3\./.test(t) || /springBootVersion\s*=\s*['"]3\./.test(t);
 }
 
 function hasLombok(ctx) {
-  const b = buildFile(ctx);
-  return !!b && /lombok/.test(b.text);
+  // 멀티모듈: 루트 subprojects{}·부모 pom·buildSrc·버전 카탈로그에 선언된 경우까지 확인
+  return buildFilesUp(ctx).some((f) => /lombok/.test(f.text));
 }
 
 export const SPRING_RULES = [
@@ -161,7 +161,7 @@ export const SPRING_RULES = [
     files: /\.(java|kt)$/,
     when: isSpringBoot3,
     check: (src) =>
-      findAll(src, /^\s*import\s+javax\.(persistence|validation|servlet|transaction|annotation\.(PostConstruct|PreDestroy|Resource)|inject|ws\.rs|xml\.bind)\b[\w.*]*/m).map(({ line, m }) => ({
+      findAll(src, /^\s*import\s+javax\.(persistence|validation|servlet|transaction(?!\.xa)|annotation\.(PostConstruct|PreDestroy|Resource)|inject|ws\.rs|xml\.bind)\b[\w.*]*/m).map(({ line, m }) => ({
         line,
         msg: `Spring Boot 3 는 jakarta.* 를 써요: ${m[0].trim()} → ${m[0].trim().replace('javax.', 'jakarta.')}`,
       })),
@@ -302,7 +302,7 @@ export const SPRING_RULES = [
     files: /(application-prod[^/]*\.(ya?ml|properties)|(init|initdb|docker-entrypoint-initdb\.d)\/[^/]*\.sql)$/,
     check(src, ctx) {
       if (/\.sql$/.test(ctx.rel)) {
-        return /test|dummy|sample|seed/i.test(path.basename(ctx.rel)) && !/\/test\//.test(ctx.rel) ? [{ line: 1, msg: '운영 DB 초기화 경로에 테스트 데이터 SQL 을 두면 테스트 계정이 운영에 자동 적재돼요 (KEEPING 배포 규칙).' }] : [];
+        return /(^|[-_.])(test|dummy|sample|fixture)s?([-_.]|$)/i.test(path.basename(ctx.rel)) && !/\/test\//.test(ctx.rel) ? [{ line: 1, msg: '운영 DB 초기화 경로에 테스트 데이터 SQL 을 두면 테스트 계정이 운영에 자동 적재돼요 (KEEPING 배포 규칙).' }] : [];
       }
       return findAll(src, /ddl-auto\s*[:=]\s*(create|create-drop|update)\b/).map(({ line, m }) => ({ line, msg: `운영 프로필 ddl-auto=${m[1]} 금지 → validate 로 두고 스키마는 Flyway 마이그레이션으로.` }));
     },

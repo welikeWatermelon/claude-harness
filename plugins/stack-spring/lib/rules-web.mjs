@@ -15,7 +15,7 @@ function suppressions(src) {
   const out = [];
   for (const { line, m } of findAll(src, /(\/\/|\/\*|<!--)\s*(eslint-disable(?:-next-line|-line)?|@ts-ignore|@ts-nocheck|@ts-expect-error)([^\n*]*)/)) {
     const tail = (m[3] || '').trim();
-    const hasReason = m[2].startsWith('eslint') ? /--\s*\S{3,}/.test(tail) : /[:\-–]\s*\S{3,}|\S{6,}/.test(tail.replace(/^[\w/@-]+(,\s*[\w/@-]+)*/, '').trim());
+    const hasReason = m[2].startsWith('eslint') ? /--\s*\S{3,}/.test(tail) : tail.replace(/^[:\-–\s]+/, '').length >= 6 || tail.split(/\s+/).filter(Boolean).length >= 2;
     if (m[2] === '@ts-nocheck' || m[2] === '@ts-ignore' || !hasReason) {
       out.push({ line, msg: `${m[2]} 로 오류를 숨기지 마세요${m[2] === '@ts-ignore' || m[2] === '@ts-nocheck' ? '' : ' (이유 없음)'} → 타입·로직을 고치세요. 꼭 필요하면 @ts-expect-error: <이유> / eslint-disable-next-line <규칙> -- <이유> 형태로.` });
     }

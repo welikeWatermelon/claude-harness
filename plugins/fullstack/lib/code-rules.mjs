@@ -8,14 +8,20 @@
 //
 // 규칙 정의
 //   { id, title, severity: 'block'|'warn', files: RegExp, when?(ctx)=>bool, check(text, ctx) => [{ line, msg }] }
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 /** Edit/Write/MultiEdit 를 적용했을 때의 결과 텍스트. 계산할 수 없으면 null */
 export function applyEdit(oldText, toolName, ti = {}) {
   if (toolName === 'Write') return String(ti.content ?? '');
-  const base = oldText ?? '';
-  const one = (text, o, n, all) => {
+  let base = oldText ?? '';
+  // Windows(autocrlf) 파일은 CRLF 인데 Claude 의 old_string 은 LF → 맞춰서 비교 (규칙 검사용 결과라 LF 로 계산해도 됨)
+  const crlf = base.includes('\r\n');
+  if (crlf) base = base.replace(/\r\n/g, '\n');
+  const lf = (x) => (crlf && typeof x === 'string' ? x.replace(/\r\n/g, '\n') : x);
+  const one = (text, o0, n0, all) => {
+    const o = lf(o0);
+    const n = lf(n0);
     if (o === undefined || o === null) return text;
     if (!text.includes(o)) return null;
     return all ? text.split(o).join(n) : text.replace(o, () => n);
@@ -141,6 +147,45 @@ export function nearestFileText(startAbs, names, stopRoot) {
 
 export function buildFile(ctx) {
   return nearestFileText(ctx.abs, ['build.gradle', 'build.gradle.kts', 'pom.xml'], ctx.root);
+}
+
+/** 파일 위치부터 ctx.root 까지 모든 빌드 파일 + 루트의 buildSrc·버전 카탈로그 (멀티모듈 판단용) */
+export function buildFilesUp(ctx) {
+  const out = [];
+  const end = path.resolve(ctx.root || path.parse(ctx.abs).root);
+  let dir = path.dirname(ctx.abs);
+  const names = ['build.gradle', 'build.gradle.kts', 'pom.xml', 'settings.gradle', 'settings.gradle.kts', 'gradle/libs.versions.toml'];
+  for (let i = 0; i < 30; i++) {
+    for (const n of names) {
+      const p = path.join(dir, n);
+      if (existsSync(p)) out.push({ path: p, text: readText(p) || '' });
+    }
+    if (path.resolve(dir) === end) break;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  for (const n of ['buildSrc/build.gradle', 'buildSrc/build.gradle.kts']) {
+    const p = path.join(end, n);
+    if (existsSync(p)) out.push({ path: p, text: readText(p) || '' });
+  }
+  const conv = path.join(end, 'buildSrc', 'src', 'main');
+  if (existsSync(conv)) {
+    const walk = (d, depth) => {
+      if (depth > 4) return;
+      let ents = [];
+      try {
+        ents = readdirSync(d, { withFileTypes: true });
+      } catch {}
+      for (const e of ents) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p, depth + 1);
+        else if (/\.gradle(\.kts)?$/.test(e.name)) out.push({ path: p, text: readText(p) || '' });
+      }
+    };
+    walk(conv, 0);
+  }
+  return out;
 }
 
 export function packageJson(ctx) {

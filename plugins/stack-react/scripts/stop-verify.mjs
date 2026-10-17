@@ -18,8 +18,9 @@ function testsFor(root, p, changed) {
   const out = new Set();
   for (const rel of changed) {
     const abs = path.join(root, rel);
-    if (!abs.startsWith(p.pkgDir)) continue;
+    if (!abs.startsWith(p.pkgDir + path.sep)) continue;
     const inPkg = path.relative(p.pkgDir, abs).replace(/\\/g, '/');
+    if (/(^|\/)(e2e|playwright|cypress)\//.test(inPkg)) continue; // 브라우저 E2E 는 vitest/jest 대상 아님
     if (/\.(test|spec)\.[jt]sx?$/.test(inPkg)) {
       if (existsSync(abs)) out.add(inPkg);
       continue;
@@ -32,7 +33,7 @@ function testsFor(root, p, changed) {
 
 function testCommand(p, files) {
   const pre = p.pm === 'npm' ? ['exec', '--'] : p.pm === 'yarn' ? [] : ['exec'];
-  if (p.deps && p.deps.vitest) return [...pre, 'vitest', 'run', ...files];
+  if (p.deps && p.deps.vitest) return [...pre, 'vitest', 'run', '--passWithNoTests', ...files];
   if (p.deps && p.deps.jest) return [...pre, 'jest', '--findRelatedTests', '--passWithNoTests', ...files];
   return null;
 }

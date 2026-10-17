@@ -8,6 +8,7 @@ import { editContext, checkRules, blockMessage } from '../lib/rules-hook.mjs';
 import { BACKEND_RULES, MIGRATION_PATH } from '../lib/rules-backend.mjs';
 import { severityOf } from '../lib/code-rules.mjs';
 import { git } from '../lib/proc.mjs';
+import { detectBackend } from '../lib/build-detect.mjs';
 import { logEvent } from '../lib/logger.mjs';
 
 await runHook(
@@ -15,7 +16,7 @@ await runHook(
     const ec = editContext(input);
     if (!ec) return pass();
     if (MIGRATION_PATH.test(ec.rel) && ec.oldText !== null && severityOf({ id: 'B2', severity: 'block' }, ec.cfg) !== 'off') {
-      const tracked = git(['ls-files', '--error-unmatch', ec.rel], ec.root).ok;
+      const tracked = git(['cat-file', '-e', `HEAD:${ec.rel}`], ec.root).ok; // 커밋된 것만 (스테이징만 된 건 아직 작성 중)
       if (tracked) {
         logEvent(ec.sessionRoot, ec.cfg, ec.sessionId, 'rule', { id: 'B2', severity: 'block', file: ec.rel });
         deny(
@@ -25,6 +26,8 @@ await runHook(
         );
       }
     }
+    // 모노레포에서 React·Spring 파일에는 적용하지 않음: 코드 파일은 이 플러그인 대상 프로젝트일 때만
+    if (/\.(ts|js|mjs|cjs|py|go|java|kt|kts)$/.test(ec.rel) && !detectBackend(ec.abs, ec.root)) return pass();
     const r = checkRules(ec, BACKEND_RULES, 'backend');
     if (r && r.blocks.length) deny(blockMessage(ec, r.blocks));
     return pass();

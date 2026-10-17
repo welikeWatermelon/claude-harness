@@ -100,7 +100,7 @@ function readSafe(p) {
   }
 }
 
-function jvmFlavor(dir) {
+export function jvmFlavor(dir) {
   const text = ['build.gradle', 'build.gradle.kts', 'pom.xml'].map((f) => readSafe(path.join(dir, f))).join('\n');
   if (!text.trim()) return null;
   if (/com\.android\.(application|library)|id\s*\(?\s*["']com\.android|android\s*\{/.test(text)) return 'android';

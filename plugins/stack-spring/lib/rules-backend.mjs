@@ -35,6 +35,8 @@ export function secretCheck(src, ctx) {
   if (!IS_TEST(ctx.rel)) {
     for (const { line, m } of findAll(src, NAMED)) {
       const v = m[5];
+      if (/(_|-)?(key|name|header|cookie|param|field|storage|prefix)$/i.test(m[1].replace(/(token|secret|password|passwd)$/i, '')) && /^[\w.-]+$/.test(v) && !/\d/.test(v)) continue; // 저장소 키 이름 상수
+      if (/^[a-z][a-zA-Z]*$|^[a-z]+([_.-][a-z]+)+$/.test(v)) continue; // access_token, refreshToken, auth-token-cookie 같은 식별자
       if (PLACEHOLDER.test(v) || /^(process\.env|os\.environ|System\.getenv|env\(|import\.meta)/.test(v)) continue;
       if (/^[A-Z_]+$/.test(v) || /^[a-z]+(\.[a-z]+)+$/.test(v) || /^(https?:|\/)/.test(v)) continue; // ENV_NAME, 설정 키 이름, URL·경로
       out.push({ line, msg: `${m[1]} 에 값이 직접 들어가 있어요 → 환경변수(.env 는 커밋 금지)나 시크릿 매니저에서 읽으세요.` });

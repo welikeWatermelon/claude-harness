@@ -146,18 +146,28 @@ export function diffOpenApi(oldSpec, newSpec) {
   return changes;
 }
 
+/** 경로 변수 사이의 가장 긴 고정 구간 (/api/v1/users/{id}/posts → /api/v1/users) — 버전 세그먼트는 유지 */
+function longestFixed(p) {
+  const runs = [];
+  let cur = [];
+  for (const s of p.split('/').filter(Boolean)) {
+    if (s.startsWith('{')) {
+      if (cur.length) runs.push(cur);
+      cur = [];
+    } else cur.push(s);
+  }
+  if (cur.length) runs.push(cur);
+  if (!runs.length) return p;
+  const best = runs.reduce((a, b) => (b.join('/').length > a.join('/').length ? b : a));
+  return '/' + best.join('/');
+}
+
 /** 변경 대상에서 프론트 코드 검색어 뽑기 */
 export function searchTerms(change) {
   const t = change.target;
-  if (/^(GET|POST|PUT|PATCH|DELETE) \//.test(t)) {
-    const p = t.split(' ').pop();
-    const fixed = p.split('/').filter((s) => s && !s.startsWith('{') && !/^v\d+$/.test(s));
-    return fixed.length ? ['/' + fixed.join('/')] : [p];
-  }
+  if (/^(GET|POST|PUT|PATCH|DELETE) \//.test(t)) return [longestFixed(t.split(' ').pop())];
   if (change.kind.startsWith('endpoint') || change.kind.includes('param') || change.kind.includes('-schema-changed')) {
-    const p = t.split(' ').pop();
-    const fixed = p.split('/').filter((s) => s && !s.startsWith('{'));
-    return fixed.length ? ['/' + fixed.join('/')] : [p];
+    return [longestFixed(t.split(' ').pop())];
   }
   if (t.includes('.')) {
     const [schema, field] = t.split('.');

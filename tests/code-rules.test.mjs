@@ -179,3 +179,26 @@ test('보조 함수: 도메인, 테스트 짝, 설정 파일, 마이그레이션
   assert.deepEqual(consoleLeftovers(['src/a.ts', 'src/a.test.ts'], (f) => (f === 'src/a.ts' ? 'x\nconsole.log(1)\n' : 'console.log(2)')), ['src/a.ts:2']);
   assert.ok(WEB_RULES.every((r) => r.id.startsWith('W')));
 });
+
+test('리뷰 지적 회귀 테스트 (오탐 차단 방지)', async () => {
+  const { searchTerms } = await import('../shared/lib/openapi-diff.mjs');
+  // S5: Boot 2 + jakarta 의존성(QueryDSL) 은 Boot 3 아님, javax.transaction.xa 는 JDK
+  const b2 = project({ 'build.gradle': "plugins { id 'org.springframework.boot' version '2.7.18' }\ndependencies { annotationProcessor 'jakarta.persistence:jakarta.persistence-api' }\n" });
+  assert.equal(run(SPRING_RULES, b2, `${J}a/A.java`, 'import javax.persistence.Entity;\n').filter((v) => v.id === 'S5').length, 0);
+  assert.equal(run(SPRING_RULES, springRoot, `${J}a/A.java`, 'import javax.transaction.xa.XAResource;\n').filter((v) => v.id === 'S5').length, 0);
+  // S17: 루트 subprojects 에 lombok 이 있으면 하위 모듈에서 허용
+  const multi = project({ 'build.gradle': "subprojects { dependencies { compileOnly 'org.projectlombok:lombok' } }\n", 'module-a/build.gradle': "plugins { id 'java' }\n" });
+  assert.equal(run(SPRING_RULES, multi, 'module-a/src/main/java/a/A.java', 'import lombok.Getter;\n').filter((v) => v.id === 'S17').length, 0);
+  // S15: latest·seed 단어는 테스트 데이터 아님
+  assert.equal(run(SPRING_RULES, springRoot, 'docker/init/01-latest-schema.sql', 'create table a();').filter((v) => v.id === 'S15').length, 0);
+  assert.equal(run(SPRING_RULES, springRoot, 'docker/init/02-test-users.sql', 'insert into a values(1);').filter((v) => v.id === 'S15').length, 1);
+  // CRLF 파일에 LF old_string
+  assert.equal(applyEdit('a\r\nb\r\n', 'Edit', { old_string: 'a\nb', new_string: 'c' }), 'c\n');
+  // B3: 저장소 키 이름 상수는 비밀값 아님
+  for (const c of ["const ACCESS_TOKEN_KEY = 'access_token';", 'export const REFRESH_TOKEN = "refreshToken";', 'private static final String ACCESS_TOKEN = "access_token";', "authToken: 'auth-token-cookie'"])
+    assert.equal(run(BACKEND_RULES, plainRoot, 'src/auth.ts', c + '\n').filter((v) => v.id === 'B3').length, 0, c);
+  // R3: 문장으로 쓴 ts-expect-error 이유 허용
+  assert.equal(run(REACT_RULES, reactRoot, 'src/a.ts', '// @ts-expect-error library types are wrong here\n').filter((v) => v.id === 'R3').length, 0);
+  // 버전 경로 검색어는 버전 유지
+  assert.deepEqual(searchTerms({ kind: 'endpoint-removed', target: 'GET /api/v1/users/{id}' }), ['/api/v1/users']);
+});

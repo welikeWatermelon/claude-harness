@@ -457,6 +457,8 @@ test('stack-frontend: 앱 설정 파일 수정 확인(X1), 하드코딩 키 거�
   const dir = makeRepo({ branch: 'feature/app' });
   writeFileSync(path.join(dir, 'Package.swift'), '// swift-tools-version:5.9\n');
   assert.equal(decision(hook('stack-frontend', 'pre-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'GoogleService-Info.plist'), content: '<plist/>' } })), 'ask');
+  mkdirSync(path.join(dir, 'app'), { recursive: true });
+  writeFileSync(path.join(dir, 'app', 'build.gradle.kts'), 'plugins { id("com.android.application") }\n');
   const kt = path.join(dir, 'app/src/main/java/com/x/Keys.kt');
   assert.equal(decision(hook('stack-frontend', 'pre-edit.mjs', { cwd: dir, tool_name: 'Write', tool_input: { file_path: kt, content: 'val k = "AIzaSyA1234567890abcdefghijklmnopqrstuv"\n' } })), 'deny');
   const sw = path.join(dir, 'Sources/App/HomeView.swift');
