@@ -1,6 +1,6 @@
 {
   "name": "stack-react",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "description": "React 전용: 턴 종료 시 타입체크/린트/빌드 통과 강제(패키지 매니저 자동 감지), 컴포넌트 리뷰 에이전트, 백엔드 응답 포맷과 맞춘 API 클라이언트 규칙",
   "author": {
     "name": "welikeWatermelon"

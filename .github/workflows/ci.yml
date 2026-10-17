@@ -19,6 +19,8 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      - name: Gradle 워밍업
+        run: gradle help
       - name: git identity
         run: |
           git config --global user.email ci@example.com
