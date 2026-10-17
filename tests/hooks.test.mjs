@@ -272,7 +272,9 @@ test('stack-spring: application.yml 하드코딩 시크릿 경고', () => {
   assert.doesNotMatch(r.json.hookSpecificOutput.additionalContext, /realpassword123/);
 });
 
-const hasGradle = spawnSync('gradle', ['--version'], { encoding: 'utf8' }).status === 0;
+const hasGradle = process.platform === 'win32'
+  ? spawnSync('where', ['gradle'], { encoding: 'utf8' }).status === 0
+  : spawnSync('gradle', ['--version'], { encoding: 'utf8' }).status === 0;
 test('stack-spring: 편집 시 컴파일 실패를 Claude 에게 돌려주고, Stop 에서 block → 고치면 통과', { skip: !hasGradle && 'gradle 없음', timeout: 300000 }, () => {
   const dir = makeRepo({ branch: 'feature/g' });
   writeFileSync(path.join(dir, 'settings.gradle'), "rootProject.name = 'demo'\n");

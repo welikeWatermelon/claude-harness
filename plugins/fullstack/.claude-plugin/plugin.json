@@ -1,6 +1,6 @@
 {
   "name": "fullstack",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "백엔드(Spring)·프론트(React) 레포가 나뉜 프로젝트의 API 계약 연동: springdoc 으로 OpenAPI 명세 생성 → 이전 계약과 비교 → 깨지는 변경이면 프론트 사용처를 찾아 프론트를 고치고, 화면에 보이는 값이면 개발자 결정으로 미룸. 명세 작성·계약 리뷰 에이전트 포함.",
   "author": {
     "name": "welikeWatermelon"

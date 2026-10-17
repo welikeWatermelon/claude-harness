@@ -59,6 +59,19 @@ export function canon(p) {
   return abs;
 }
 
+/**
+ * PATH 에 있는 명령의 실제 실행 파일. Windows 는 설치 방법에 따라 gradle.bat / gradle.exe(choco shim) / gradle.cmd 가
+ * 달라서 이름을 가정하면 안 됨 (Windows CI 에서 'gradle.bat' is not recognized 로 확인) → `where` 로 찾음.
+ * 못 찾으면 name 그대로.
+ */
+export function whichCmd(name) {
+  if (!IS_WIN) return name;
+  const r = spawnSync('where', [name], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+  const found = (r.stdout || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  const pick = found.find((f) => /\.(exe|bat|cmd)$/i.test(f));
+  return pick || name;
+}
+
 export function tail(text, lines = 30) {
   const arr = String(text || '').split(/\r?\n/);
   return arr.slice(-lines).join('\n');
